@@ -1,11 +1,10 @@
 // Cloudflare Workers config: serves the static rankings site in ./docs
 // (the same directory GitHub Pages deploys) as an assets-only Worker.
-// Deploy: npx wrangler deploy   (needs CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID,
-// or an interactive `npx wrangler login`). CI deploys via
-// .github/workflows/deploy-cloudflare.yml.
+// Deployed by Cloudflare's Workers Builds Git integration, which runs
+// `npx wrangler deploy` on pushes to main.
 {
   "$schema": "https://unpkg.com/wrangler/config-schema.json",
-  "name": "sp1500-momentum",
+  "name": "1500",
   "compatibility_date": "2026-08-20",
   "assets": {
     "directory": "./docs",
