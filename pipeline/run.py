@@ -89,6 +89,28 @@ def main(argv: list[str] | None = None) -> int:
     for p in provider_used.values():
         provider_counts[p] = provider_counts.get(p, 0) + 1
 
+    # Equal-weighted sector aggregates: every member counts 1/N, no cap
+    # weighting. Ranked by the same Avg. VAR construction as single stocks.
+    sec = (
+        table[table["sector"] != ""]
+        .groupby("sector")
+        .agg(
+            count=("symbol", "size"),
+            return_12_1=("return_12_1", "mean"),
+            return_6_1=("return_6_1", "mean"),
+            volatility_12m=("volatility_12m", "mean"),
+            volatility_6m=("volatility_6m", "mean"),
+            score_12=("score_12", "mean"),
+            score_6=("score_6", "mean"),
+            final_score=("final_score", "mean"),
+        )
+        .reset_index()
+    )
+    sec["rank"] = sec["final_score"].rank(ascending=False, method="min").astype(int)
+    sec = sec.sort_values("rank")
+    num_cols = sec.columns.difference(["sector", "count", "rank"])
+    sec[num_cols] = sec[num_cols].round(4)
+
     as_of = table["last_date"].value_counts().idxmax()
     payload = {
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -97,6 +119,7 @@ def main(argv: list[str] | None = None) -> int:
         "ranked_counts": table["index"].value_counts().to_dict(),
         "data_sources": provider_counts,
         "excluded": sorted(excluded, key=lambda x: (x["index"], x["symbol"])),
+        "sectors": sec.to_dict("records"),
         "columns": TABLE_COLUMNS,
         "rows": table[TABLE_COLUMNS].where(table[TABLE_COLUMNS].notna(), None).values.tolist(),
     }

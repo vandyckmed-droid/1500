@@ -102,18 +102,20 @@
   }
   .row:active { background: var(--surface); }
   .logo {
-    width: 34px; height: 34px; border-radius: 8px; flex: none;
-    background: #f7f7f8; object-fit: contain; padding: 4px;
+    width: 34px; height: 34px; border-radius: 50%; flex: none;
+    background: #f2f2f4; object-fit: contain; padding: 5px;
     border: 1px solid var(--hairline);
     opacity: 0; transition: opacity .25s ease;
   }
   .logo.ld { opacity: 1; }
+  .logo.dk { background: var(--surface-2); }
   .mono {
-    width: 34px; height: 34px; border-radius: 8px; flex: none;
+    width: 34px; height: 34px; border-radius: 50%; flex: none;
     background: var(--surface-2); color: var(--text-2);
     display: flex; align-items: center; justify-content: center;
     font-weight: 700; font-size: .95rem;
   }
+  .mono.seco { color: var(--text); font-size: .85rem; }
   .id { flex: 1; min-width: 0; }
   .id .t { font-weight: 700; font-size: .95rem; letter-spacing: .01em; }
   .id .n { color: var(--text-2); font-size: .76rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -153,8 +155,8 @@
   .navbar .title { font-weight: 700; font-size: 1rem; margin: 0 auto; padding-right: 56px; }
 
   .sheader { display: flex; align-items: center; gap: 14px; padding: 18px 16px 4px; }
-  .sheader .logo { width: 52px; height: 52px; border-radius: 12px; padding: 6px; }
-  .sheader .mono { width: 52px; height: 52px; border-radius: 12px; font-size: 1.4rem; }
+  .sheader .logo { width: 52px; height: 52px; border-radius: 50%; padding: 8px; }
+  .sheader .mono { width: 52px; height: 52px; border-radius: 50%; font-size: 1.4rem; }
   .sheader .t { font-size: 1.25rem; font-weight: 700; }
   .sheader .n { color: var(--text-2); font-size: .85rem; }
   .badges { display: flex; gap: 6px; padding: 10px 16px 2px; flex-wrap: wrap; }
@@ -281,6 +283,14 @@
     <button class="more" id="more" hidden>Show more</button>
   </div>
 
+  <!-- ===== sectors screen ===== -->
+  <div class="screen" id="sectors" hidden>
+    <div class="navbar"><span class="title">Sectors</span></div>
+    <div class="colhead" style="padding-top:10px"><span class="l">Equal-weighted VAR</span><span class="m">12-1</span><span class="m">6-1</span></div>
+    <div id="seclist"></div>
+    <div class="hint" style="padding:12px 16px">Every stock counts equally — no size weighting. Ranked by the average of the two VARs. Tap a sector to see its stocks.</div>
+  </div>
+
   <!-- ===== about screen ===== -->
   <div class="screen" id="about" hidden>
     <div class="navbar"><span class="title">About</span></div>
@@ -316,6 +326,10 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 17l5-6 4 3 7-9"/><path d="M3 21h18"/></svg>
       Rankings
     </button>
+    <button data-screen="sectors">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="12" width="4" height="8"/><rect x="10" y="7" width="4" height="13"/><rect x="17" y="3" width="4" height="17"/></svg>
+      Sectors
+    </button>
     <button data-screen="about">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8v.01"/></svg>
       About
@@ -348,6 +362,7 @@ fetch("data/rankings.json", {cache: "no-store"}).then(r => {
   document.getElementById("asof").textContent = d.as_of;
   document.getElementById("status").hidden = true;
   renderAbout();
+  renderSectors();
   refresh();
   route();
 }).catch(e => {
@@ -358,12 +373,53 @@ fetch("data/rankings.json", {cache: "no-store"}).then(r => {
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 }
+const TILE_CACHE = (() => { try { return JSON.parse(localStorage.getItem("tilecls") || "{}"); } catch (e) { return {}; } })();
+function classifyLogo(img, sym) {
+  // Colorful or light logos sit on a dark tile; dark unsaturated glyphs and
+  // images with a baked-in white background keep the light tile.
+  try {
+    const c = document.createElement("canvas");
+    c.width = c.height = 24;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0, 24, 24);
+    const d = ctx.getImageData(0, 0, 24, 24).data;
+    let n = 0, lum = 0, sat = 0, opaque = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] > 40) {
+        opaque++;
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        lum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        sat += Math.max(r, g, b) - Math.min(r, g, b);
+        n++;
+      }
+    }
+    if (!n) return "lt";
+    lum /= n; sat /= n;
+    const corners = [0, 23 * 4, 23 * 24 * 4, (24 * 24 - 1) * 4].every(i =>
+      d[i + 3] > 200 && (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) > 200);
+    if (opaque / 576 > 0.95 && corners) return "lt";
+    if (lum < 105 && sat < 55) return "lt";
+    return "dk";
+  } catch (e) {
+    return "lt";
+  }
+}
 function logoEl(sym, cls) {
   const img = document.createElement("img");
   img.className = cls; img.loading = "lazy"; img.alt = ""; img.decoding = "async";
+  img.crossOrigin = "anonymous";
+  if (TILE_CACHE[sym] === "dk") img.classList.add("dk");
   img.src = LOGO(sym);
-  img.onload = () => img.classList.add("ld");
-  if (img.complete && img.naturalWidth > 0) img.classList.add("ld");
+  img.onload = () => {
+    img.classList.add("ld");
+    if (!TILE_CACHE[sym]) {
+      const t = classifyLogo(img, sym);
+      TILE_CACHE[sym] = t;
+      try { localStorage.setItem("tilecls", JSON.stringify(TILE_CACHE)); } catch (e) {}
+      if (t === "dk") img.classList.add("dk");
+    }
+  };
+  if (img.complete && img.naturalWidth > 0) img.onload();
   img.onerror = () => {
     // stable per-symbol tint so fallbacks look intentional, not broken
     let h = 7;
@@ -391,7 +447,8 @@ function rowsFor() {
     const q = query.toLowerCase();
     rs = rs.filter(r =>
       String(r[IDX.symbol]).toLowerCase().includes(q) ||
-      String(r[IDX.name]).toLowerCase().includes(q));
+      String(r[IDX.name]).toLowerCase().includes(q) ||
+      String(r[IDX.sector]).toLowerCase().includes(q));
   }
   return rs;
 }
@@ -644,18 +701,43 @@ function route() {
   const stock = h.match(/^#\/s\/(.+)$/);
   document.getElementById("stock").classList.toggle("open", !!stock);
   if (stock) { showStock(decodeURIComponent(stock[1])); return; }
-  const screen = h === "#/about" ? "about" : "home";
-  document.getElementById("home").hidden = screen !== "home";
-  document.getElementById("about").hidden = screen !== "about";
+  const screen = h === "#/about" ? "about" : h === "#/sectors" ? "sectors" : "home";
+  for (const id of ["home", "sectors", "about"])
+    document.getElementById(id).hidden = screen !== id;
   for (const b of document.querySelectorAll("#tabbar button"))
     b.classList.toggle("active", b.dataset.screen === screen);
 }
 window.addEventListener("hashchange", route);
 
+/* ---------- sectors ---------- */
+function renderSectors() {
+  const list = document.getElementById("seclist");
+  const frag = document.createDocumentFragment();
+  for (const s of DATA.sectors || []) {
+    const el = document.createElement("div");
+    el.className = "row";
+    el.innerHTML =
+      '<div class="mono seco">' + s.rank + "</div>" +
+      '<div class="id"><div class="t">' + esc(s.sector) + '</div><div class="n">' + s.count + " stocks · equal-weighted</div></div>" +
+      chip(s.score_12, MODES.voladj) + chip(s.score_6, MODES.voladj);
+    el.addEventListener("click", () => {
+      document.getElementById("search").value = s.sector;
+      query = s.sector;
+      refresh();
+      location.hash = "#/";
+      document.getElementById("home").scrollTo({top: 0});
+    });
+    frag.appendChild(el);
+  }
+  list.innerHTML = "";
+  list.appendChild(frag);
+}
+
 /* ---------- events ---------- */
 document.getElementById("tabbar").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
-  location.hash = b.dataset.screen === "about" ? "#/about" : "#/";
+  const s = b.dataset.screen;
+  location.hash = s === "about" ? "#/about" : s === "sectors" ? "#/sectors" : "#/";
 });
 document.getElementById("tabs").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
