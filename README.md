@@ -53,9 +53,10 @@ client-side. Prices are cached under `data_cache/` per end-date; use
 `.github/workflows/update.yml` runs each weekday night (05:30 UTC Tue–Sat,
 after the US close) and on manual dispatch: it fetches constituents and prices,
 recomputes the rankings, runs validation checks (coverage per index, value
-sanity bounds, rank integrity), and commits the updated
-`docs/data/rankings.json`. GitHub Pages serves the site from `main:/docs`, so a
-data commit republishes the site automatically.
+sanity bounds, rank integrity), commits the updated `docs/data/rankings.json`,
+and deploys `docs/` to GitHub Pages. A push to `main` redeploys the site
+without refreshing data. If validation fails, nothing is committed or deployed
+and the previous site stays up.
 
 To let CI use the keyed provider, add a repository **Actions secret** named
 `API_KEY` (Settings → Secrets and variables → Actions). Without it, CI uses the
