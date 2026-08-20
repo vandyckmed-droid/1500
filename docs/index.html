@@ -294,6 +294,38 @@
   #aireview[hidden] { display: none; }
   .about-body .aibtn, .about-body .aibox { width: 100%; margin: 0; }
 
+  /* ---------- dashboard (Today) ---------- */
+  .mktline { padding: 10px 16px 2px; color: var(--text-3); font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+  .ixrow { display: flex; gap: 8px; overflow-x: auto; padding: 8px 12px 2px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .ixrow::-webkit-scrollbar { display: none; }
+  .ixcard { flex: none; width: 128px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; padding: 10px 11px; }
+  .ixcard .k { color: var(--text-2); font-size: .74rem; font-weight: 600; white-space: nowrap; }
+  .ixcard .v { font-size: .95rem; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .ixcard .d { font-size: .76rem; font-weight: 700; margin-top: 1px; }
+  .ixcard .d.up { color: var(--up); } .ixcard .d.down { color: var(--down); }
+  .ixcard svg { display: block; width: 100%; height: 26px; margin-top: 4px; }
+  .mspark { flex: none; width: 84px; height: 32px; }
+  .pill { flex: none; min-width: 62px; text-align: center; border-radius: 8px; padding: 5px 6px; font-weight: 700; font-size: .8rem; font-variant-numeric: tabular-nums; }
+  .pill.up { background: var(--up-bg); color: var(--up); }
+  .pill.down { background: var(--down-bg); color: var(--down); }
+  .pill.flat { background: var(--flat-bg); color: var(--text-2); }
+  .dprice { flex: none; text-align: right; }
+  .dprice .p { font-weight: 700; font-size: .92rem; font-variant-numeric: tabular-nums; }
+  .rmov { display: flex; align-items: center; gap: 10px; margin: 6px 12px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; cursor: pointer; }
+  .rmov .d { margin-left: auto; font-weight: 700; font-size: .9rem; }
+  .rmov .d.up { color: var(--up); } .rmov .d.down { color: var(--down); }
+
+  /* pull-to-refresh + live pulse + chart draw-in */
+  .ptr { text-align: center; color: var(--text-3); font-size: .76rem; height: 0; overflow: hidden; transition: height .2s ease; }
+  .ptr.on { height: 30px; padding-top: 9px; }
+  .pulse { transform-box: fill-box; transform-origin: center; animation: pulsedot 1.8s ease-out infinite; }
+  @keyframes pulsedot {
+    0% { opacity: .55; transform: scale(1); }
+    70% { opacity: 0; transform: scale(3.2); }
+    100% { opacity: 0; transform: scale(3.2); }
+  }
+  @media (prefers-reduced-motion: reduce) { .pulse { animation: none; opacity: 0; } }
+
   /* ---------- about screen ---------- */
   #about .navbar .title { padding-right: 0; margin: 0 auto; }
   .about-body { padding: 16px; color: var(--text-2); font-size: .88rem; }
@@ -324,7 +356,27 @@
 <div class="app">
  <div class="content">
 
-  <!-- ===== home screen ===== -->
+  <!-- ===== dashboard (Today) screen ===== -->
+  <div class="screen" id="dash" hidden>
+    <div class="hdr">
+      <div class="brandrow">
+        <svg class="mark" width="26" height="13" viewBox="0 0 100 46" fill="none"><path d="M4 41 C 22 41, 26 24, 38 26 S 58 34, 68 22 S 86 4, 96 5" stroke-width="9" stroke-linecap="round"/><circle cx="96" cy="5" r="7"/></svg>
+        <h1>Markets today</h1>
+        <span class="asof" id="dasof"></span>
+      </div>
+    </div>
+    <div class="ptr" id="dptr">Refreshing&hellip;</div>
+    <div class="mktline" id="mktline"></div>
+    <div class="ixrow" id="ixrow"></div>
+    <div class="sec-label">Movers today &middot; top 150 by rank</div>
+    <div id="dmovers"><div class="chart-note" style="padding:10px 16px">Loading&hellip;</div></div>
+    <div class="sec-label">Watchlist</div>
+    <div id="dwatch"></div>
+    <div class="sec-label">Rank movers &middot; vs previous day</div>
+    <div id="drank"></div>
+  </div>
+
+  <!-- ===== rankings screen ===== -->
   <div class="screen" id="home">
     <div class="hdr">
       <div class="brandrow">
@@ -354,6 +406,7 @@
       </div>
       <div class="colhead"><span class="l" id="modelabel">VAR — reward per risk</span><span class="m" id="col1">12M</span><span class="m" id="col2">6M</span><span class="sp"></span></div>
     </div>
+    <div class="ptr" id="hptr">Refreshing&hellip;</div>
     <div id="status">Loading&hellip;</div>
     <div id="aireview" hidden></div>
     <div class="list" id="list"></div>
@@ -412,7 +465,11 @@
 
   <!-- ===== bottom tab bar ===== -->
   <nav class="tabbar" id="tabbar">
-    <button data-screen="home" class="active">
+    <button data-screen="dash" class="active">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+      Today
+    </button>
+    <button data-screen="home">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 17l5-6 4 3 7-9"/><path d="M3 21h18"/></svg>
       Rankings
     </button>
@@ -472,7 +529,7 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 let lastFetch = 0;
 function loadData(first) {
   lastFetch = Date.now();
-  fetch("data/rankings.json", {cache: "no-store"}).then(r => {
+  return fetch("data/rankings.json", {cache: "no-store"}).then(r => {
     if (!r.ok) throw new Error("HTTP " + r.status);
     return r.json();
   }).then(d => {
@@ -611,10 +668,12 @@ function rowsFor() {
 
 /* live day-change quotes for the Today mode (batched, 60s freshness) */
 const TODAYQ = {};
-let todayFetching = false;
-function ensureToday(syms) {
+let todayFetching = false, todayCbs = [];
+function ensureToday(syms, cb) {
   const stale = syms.filter(s => !TODAYQ[s] || Date.now() - TODAYQ[s].at > 60 * 1000);
-  if (!stale.length || todayFetching) return;
+  if (!stale.length) { if (cb) cb(); return; }
+  if (cb) todayCbs.push(cb);
+  if (todayFetching) return;
   todayFetching = true;
   const chunks = [];
   for (let i = 0; i < stale.length; i += 40) chunks.push(stale.slice(i, i + 40));
@@ -623,7 +682,11 @@ function ensureToday(syms) {
       .then(r => (r.ok ? r.json() : null))
       .then(d => { const at = Date.now(); for (const s of ch) TODAYQ[s] = {q: d && d.quotes ? d.quotes[s] : null, at}; })
       .catch(() => { const at = Date.now(); for (const s of ch) if (!TODAYQ[s]) TODAYQ[s] = {q: null, at}; })
-  )).finally(() => { todayFetching = false; if (mode === "today") render(true); });
+  )).finally(() => {
+    todayFetching = false;
+    if (mode === "today") render(true);
+    todayCbs.splice(0).forEach(f => { try { f(); } catch (e) {} });
+  });
 }
 function todayChips(sym) {
   const t = TODAYQ[sym];
@@ -803,9 +866,13 @@ function renderChart(box, view) {
       '<defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1">' +
         '<stop offset="0" stop-color="' + col + '" stop-opacity=".18"/>' +
         '<stop offset="1" stop-color="' + col + '" stop-opacity="0"/></linearGradient></defs>' +
-      '<path d="' + area + '" fill="url(#cg)"/>' +
+      '<path class="charea" d="' + area + '" fill="url(#cg)"/>' +
       '<line x1="0" x2="' + W + '" y1="' + y(first).toFixed(1) + '" y2="' + y(first).toFixed(1) + '" stroke="var(--baseline)" stroke-width="1" stroke-dasharray="3,6" vector-effect="non-scaling-stroke"/>' +
-      '<path d="' + path + '" fill="none" stroke="' + col + '" stroke-width="2" vector-effect="non-scaling-stroke"/>' +
+      '<path class="chline" d="' + path + '" fill="none" stroke="' + col + '" stroke-width="2" vector-effect="non-scaling-stroke"/>' +
+      (view.live ?
+        '<circle class="chld" cx="' + x(closes.length - 1).toFixed(1) + '" cy="' + y(last).toFixed(1) + '" r="6" fill="' + col + '"/>' +
+        '<circle class="chld pulse" cx="' + x(closes.length - 1).toFixed(1) + '" cy="' + y(last).toFixed(1) + '" r="6" fill="' + col + '"/>'
+        : "") +
       '<line id="crLine" x1="0" x2="0" y1="0" y2="' + H + '" stroke="var(--text-3)" stroke-width="1" visibility="hidden" vector-effect="non-scaling-stroke"/>' +
       '<circle id="crDot" r="7" fill="' + col + '" visibility="hidden"/>' +
     "</svg>" +
@@ -813,6 +880,25 @@ function renderChart(box, view) {
       '<button data-range="' + r.k + '"' + (r.k === rangeKey ? ' class="active"' : "") + ">" + r.k + "</button>").join("") + "</div>";
 
   const svg = box.querySelector("svg");
+  // Draw-in: the line sweeps left to right, the fill fades up behind it.
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const lp = svg.querySelector(".chline"), ap = svg.querySelector(".charea");
+    const dots = svg.querySelectorAll(".chld");
+    try {
+      const len = lp.getTotalLength();
+      lp.style.strokeDasharray = len; lp.style.strokeDashoffset = len;
+      ap.style.opacity = 0;
+      dots.forEach(c => { c.style.opacity = 0; });
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        lp.style.transition = "stroke-dashoffset .65s ease-out";
+        lp.style.strokeDashoffset = 0;
+        ap.style.transition = "opacity .5s ease .25s";
+        ap.style.opacity = 1;
+        dots.forEach(c => { c.style.transition = "opacity .3s ease .55s"; c.style.opacity = 1; });
+        setTimeout(() => { lp.style.strokeDasharray = "none"; }, 750);
+      }));
+    } catch (e) {}
+  }
   const crLine = box.querySelector("#crLine"), crDot = box.querySelector("#crDot");
   const crMain = box.querySelector("#crMain"), crDelta = box.querySelector("#crDelta"), crSub = box.querySelector("#crSub");
   const reset = () => {
@@ -860,16 +946,20 @@ function showRange(box, sym, key) {
   if (key === "1D") {
     fetchSpark(sym).then(d => {
       if (!live()) return;
-      renderChart(box, {key, closes: d.closes, baseline: d.prev_close, sub: SUBS[key],
+      renderChart(box, {key, closes: d.closes, baseline: d.prev_close, sub: SUBS[key], live: true,
         labelAt: i => timeLabel(d.times[i], d.gmtoffset)});
     }).catch(() => { if (live()) showRange(box, sym, "1Y"); });
   } else {
-    fetchPrices(sym).then(data => {
+    // EOD history plus today's live price appended as the leading point.
+    Promise.all([fetchPrices(sym), fetchSpark(sym).catch(() => null)]).then(([data, sp]) => {
       if (!live()) return;
       const range = RANGES.find(r => r.k === key) || RANGES[RANGES.length - 1];
       const n = range.n && range.n < data.close.length ? range.n : data.close.length;
       const closes = data.close.slice(-n), dates = data.dates.slice(-n);
-      renderChart(box, {key, closes, baseline: closes[0], sub: SUBS[key], labelAt: i => day(dates[i])});
+      const hasLive = !!(sp && sp.price != null);
+      if (hasLive) closes.push(sp.price);
+      renderChart(box, {key, closes, baseline: closes[0], sub: SUBS[key], live: hasLive,
+        labelAt: i => (i >= dates.length ? "now" : day(dates[i]))});
     }).catch(() => {
       if (live()) box.innerHTML = '<div class="chart-note">Chart unavailable right now.</div>';
     });
@@ -930,6 +1020,7 @@ function showStock(sym) {
     section("VAR — volatility-adjusted return", vars) +
     section("Return (skips latest month)", rets) +
     section("Volatility (annualized)", vols) +
+    section("Rank history", '<div id="rkhist" class="chart-note" style="padding:4px 16px 0">Loading&hellip;</div>') +
     section("About the company", '<div id="aico"></div>') +
     '<div class="explain" id="explain" hidden></div>';
 
@@ -938,6 +1029,33 @@ function showStock(sym) {
   aiButton(document.getElementById("aico"), "What does this company do?", () =>
     aiJson(API + "/api/analyze/" + encodeURIComponent(sym))
       .then(d => { if (!d.analysis) throw 0; return d.analysis; }));
+  // Rank-over-time line from D1 history (rank 1 plotted at the top).
+  fetch(API + "/api/history/" + encodeURIComponent(sym) + "?limit=180")
+    .then(r => (r.ok ? r.json() : null)).then(h => {
+      const el = document.getElementById("rkhist");
+      if (!el || body.dataset.sym !== sym) return;
+      if (!h || !h.points || h.points.length < 2) {
+        el.textContent = "Rank history starts today — the line appears as nightly updates accumulate.";
+        return;
+      }
+      const pts = h.points, ranks = pts.map(p => p.rank_1500);
+      const w = 320, ht = 72;
+      let lo = Math.min(...ranks), hi = Math.max(...ranks);
+      if (hi === lo) hi = lo + 1;
+      const x = i => 4 + (i / (ranks.length - 1)) * (w - 8);
+      const yy = v => 6 + ((v - lo) / (hi - lo)) * (ht - 12);
+      let p = "";
+      for (let i = 0; i < ranks.length; i++) p += (i ? "L" : "M") + x(i).toFixed(1) + " " + yy(ranks[i]).toFixed(1);
+      const col = ranks[ranks.length - 1] <= ranks[0] ? "var(--up)" : "var(--down)";
+      el.className = "";
+      el.style.padding = "0 16px";
+      el.innerHTML =
+        '<svg viewBox="0 0 ' + w + " " + ht + '" style="display:block;width:100%;height:72px">' +
+        '<path d="' + p + '" fill="none" stroke="' + col + '" stroke-width="2"/>' +
+        '<circle cx="' + x(ranks.length - 1).toFixed(1) + '" cy="' + yy(ranks[ranks.length - 1]).toFixed(1) + '" r="3" fill="' + col + '"/></svg>' +
+        '<div style="display:flex;justify-content:space-between;color:var(--text-3);font-size:.72rem;padding:4px 0 0">' +
+        "<span>#" + ranks[0] + " · " + day(pts[0].as_of) + "</span><span>#" + ranks[ranks.length - 1] + " · latest</span></div>";
+    }).catch(() => {});
   // Live intraday price (falls back silently to the EOD close on failure).
   fetch(API + "/api/quote/" + encodeURIComponent(sym))
     .then(r => (r.ok ? r.json() : null)).then(q => {
@@ -988,17 +1106,140 @@ function renderAbout() {
     '<div class="kv"><span>Last update</span><b>' + DATA.generated_at.replace("T", " ").replace("Z", " UTC") + "</b></div>";
 }
 
+/* ---------- dashboard (Today) ---------- */
+function sparkSVG(q, w, h) {
+  const s = q.s && q.s.length > 1 ? q.s : [q.prev, q.p];
+  let min = Math.min(q.prev, ...s), max = Math.max(q.prev, ...s);
+  if (max === min) max = min + 1;
+  const x = i => 2 + (i / (s.length - 1)) * (w - 6);
+  const y = v => 3 + (1 - (v - min) / (max - min)) * (h - 6);
+  const col = q.c >= 0 ? "var(--up)" : "var(--down)";
+  let p = "";
+  for (let i = 0; i < s.length; i++) p += (i ? "L" : "M") + x(i).toFixed(1) + " " + y(s[i]).toFixed(1);
+  const yb = y(q.prev).toFixed(1);
+  const lx = x(s.length - 1).toFixed(1), ly = y(s[s.length - 1]).toFixed(1);
+  return '<svg viewBox="0 0 ' + w + " " + h + '" width="' + w + '" height="' + h + '">' +
+    '<line x1="2" x2="' + (w - 2) + '" y1="' + yb + '" y2="' + yb + '" stroke="var(--baseline)" stroke-width="1" stroke-dasharray="2,4"/>' +
+    '<path d="' + p + '" fill="none" stroke="' + col + '" stroke-width="1.6"/>' +
+    '<circle cx="' + lx + '" cy="' + ly + '" r="2.2" fill="' + col + '"/>' +
+    '<circle cx="' + lx + '" cy="' + ly + '" r="2.2" fill="' + col + '" class="pulse"/>' +
+    "</svg>";
+}
+
+function marketLine() {
+  const parts = new Intl.DateTimeFormat("en-US", {timeZone: "America/New_York", hour12: false, weekday: "short", hour: "numeric", minute: "numeric"}).formatToParts(new Date());
+  const get = t => (parts.find(p => p.type === t) || {}).value;
+  const wd = get("weekday"), mins = (+get("hour") % 24) * 60 + (+get("minute"));
+  const open = 9 * 60 + 30, close = 16 * 60;
+  if (wd === "Sat" || wd === "Sun") return "U.S. markets closed · weekend";
+  if (mins < open) { const d = open - mins; return "U.S. markets open in " + Math.floor(d / 60) + " hr " + (d % 60) + " min"; }
+  if (mins < close) { const d = close - mins; return "U.S. markets close in " + Math.floor(d / 60) + " hr " + (d % 60) + " min"; }
+  return "U.S. markets closed";
+}
+
+let IX = {at: 0, data: null};
+function moverRow(sym, q) {
+  const r = BYSYM[sym];
+  const cls = q.c > 0 ? "up" : q.c < 0 ? "down" : "flat";
+  const el = document.createElement("div");
+  el.className = "row";
+  el.innerHTML =
+    '<div class="id"><div class="t">' + esc(sym) + '</div><div class="n">' + esc(r ? r[IDX.name] : "") + "</div></div>" +
+    '<div class="mspark">' + sparkSVG(q, 84, 32) + "</div>" +
+    '<div class="dprice"><div class="p">$' + (q.p >= 1000 ? q.p.toFixed(0) : q.p.toFixed(2)) + '</div><div class="pill ' + cls + '">' + (q.c > 0 ? "+" : "") + q.c.toFixed(2) + "%</div></div>";
+  el.prepend(logoEl(sym, "logo"));
+  el.addEventListener("click", () => { location.hash = "#/s/" + encodeURIComponent(sym); });
+  return el;
+}
+
+let dashTimer = 0;
+function renderDash(force) {
+  if (!DATA) return;
+  document.getElementById("dasof").textContent = DATA.as_of;
+  const mkt = document.getElementById("mktline");
+  mkt.textContent = marketLine();
+  clearInterval(dashTimer);
+  dashTimer = setInterval(() => {
+    if (!document.getElementById("dash").hidden) mkt.textContent = marketLine();
+  }, 30000);
+
+  if (force) { IX.at = 0; for (const k in TODAYQ) TODAYQ[k].at = 0; }
+
+  const ixrow = document.getElementById("ixrow");
+  const paintIx = () => {
+    ixrow.innerHTML = IX.data.map(q =>
+      '<div class="ixcard"><div class="k">' + esc(q.label) + '</div><div class="v">' +
+      q.p.toLocaleString("en-US", {maximumFractionDigits: 2}) + '</div><div class="d ' + (q.c >= 0 ? "up" : "down") + '">' +
+      (q.c >= 0 ? "+" : "") + q.c.toFixed(2) + "%</div>" + sparkSVG(q, 106, 26) + "</div>").join("");
+  };
+  if (IX.data && Date.now() - IX.at < 60 * 1000) paintIx();
+  else fetch(API + "/api/indices").then(r => (r.ok ? r.json() : null)).then(d => {
+    if (d && d.indices && d.indices.length) { IX = {at: Date.now(), data: d.indices}; paintIx(); }
+  }).catch(() => {});
+
+  const top = DATA.rows.slice(0, 150).map(r => r[IDX.symbol]);
+  const wsyms = [...WATCH];
+  ensureToday([...new Set([...top, ...wsyms])], () => {
+    const dm = document.getElementById("dmovers");
+    const qs = top.map(s => [s, TODAYQ[s] && TODAYQ[s].q]).filter(x => x[1]);
+    qs.sort((a, b) => Math.abs(b[1].c) - Math.abs(a[1].c));
+    dm.innerHTML = "";
+    if (!qs.length) dm.innerHTML = '<div class="chart-note" style="padding:10px 16px">Live quotes unavailable right now.</div>';
+    for (const [s, q] of qs.slice(0, 8)) dm.appendChild(moverRow(s, q));
+    const dw = document.getElementById("dwatch");
+    dw.innerHTML = "";
+    if (!wsyms.length) dw.innerHTML = '<div class="chart-note" style="padding:10px 16px">Star stocks in Rankings to see them here.</div>';
+    for (const s of wsyms) { const t = TODAYQ[s]; if (t && t.q) dw.appendChild(moverRow(s, t.q)); }
+  });
+
+  fetch(API + "/api/movers?n=5").then(r => (r.ok ? r.json() : null)).then(d => {
+    const el = document.getElementById("drank");
+    if (!d) return;
+    if (!d.up.length && !d.down.length) {
+      el.innerHTML = '<div class="chart-note" style="padding:10px 16px">Appears after the next nightly update — rank history started today.</div>';
+      return;
+    }
+    el.innerHTML = "";
+    for (const m of [...d.up, ...d.down]) {
+      const row = document.createElement("div");
+      row.className = "rmov";
+      row.innerHTML = '<div class="id"><div class="t">' + esc(m.symbol) + '</div><div class="n">' + esc(m.name || m.sector || "") + "</div></div>" +
+        '<div class="d ' + (m.delta > 0 ? "up" : "down") + '">' + (m.delta > 0 ? "▲" : "▼") + Math.abs(m.delta) + " → #" + m.rank + "</div>";
+      row.addEventListener("click", () => { location.hash = "#/s/" + encodeURIComponent(m.symbol); });
+      el.appendChild(row);
+    }
+  }).catch(() => {});
+}
+
+/* ---------- pull-to-refresh ---------- */
+function attachPTR(el, indicator, cb) {
+  let sy = null, armed = false;
+  el.addEventListener("touchstart", e => { sy = el.scrollTop <= 0 ? e.touches[0].clientY : null; armed = false; }, {passive: true});
+  el.addEventListener("touchmove", e => { if (sy != null && e.touches[0].clientY - sy > 75) armed = true; }, {passive: true});
+  el.addEventListener("touchend", () => {
+    if (armed) {
+      indicator.classList.add("on");
+      Promise.resolve(cb()).finally(() => setTimeout(() => indicator.classList.remove("on"), 500));
+    }
+    sy = null; armed = false;
+  });
+}
+attachPTR(document.getElementById("home"), document.getElementById("hptr"), () => loadData(false));
+attachPTR(document.getElementById("dash"), document.getElementById("dptr"), () => { renderDash(true); return loadData(false); });
+
 /* ---------- router ---------- */
 function route() {
   const h = location.hash;
   const stock = h.match(/^#\/s\/(.+)$/);
   document.getElementById("stock").classList.toggle("open", !!stock);
   if (stock) { showStock(decodeURIComponent(stock[1])); return; }
-  const screen = h === "#/about" ? "about" : h === "#/sectors" ? "sectors" : "home";
-  for (const id of ["home", "sectors", "about"])
+  const screen = h === "#/about" ? "about" : h === "#/sectors" ? "sectors" :
+    h === "#/rankings" ? "home" : "dash";
+  for (const id of ["dash", "home", "sectors", "about"])
     document.getElementById(id).hidden = screen !== id;
   for (const b of document.querySelectorAll("#tabbar button"))
     b.classList.toggle("active", b.dataset.screen === screen);
+  if (screen === "dash" && DATA) renderDash(false);
 }
 window.addEventListener("hashchange", route);
 
@@ -1019,7 +1260,7 @@ function renderSectors() {
       document.getElementById("search").value = s.sector;
       query = s.sector;
       refresh();
-      location.hash = "#/";
+      location.hash = "#/rankings";
       document.getElementById("home").scrollTo({top: 0});
     });
     frag.appendChild(el);
@@ -1067,7 +1308,8 @@ askin.addEventListener("keydown", e => { if (e.key === "Enter") runAsk(); });
 document.getElementById("tabbar").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   const s = b.dataset.screen;
-  location.hash = s === "about" ? "#/about" : s === "sectors" ? "#/sectors" : "#/";
+  location.hash = s === "about" ? "#/about" : s === "sectors" ? "#/sectors" :
+    s === "home" ? "#/rankings" : "#/";
 });
 document.getElementById("tabs").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
