@@ -44,6 +44,7 @@ TABLE_COLUMNS = [
     "final_score",
     "alternative_score",
     "rank_index",
+    "rank_sector",
     "rank_1500",
     "percentile_1500",
 ]

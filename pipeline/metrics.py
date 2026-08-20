@@ -145,6 +145,11 @@ def build_table(
         .rank(ascending=False, method="min")
         .astype(int)
     )
+    df["rank_sector"] = (
+        df.groupby("sector")["final_score"]
+        .rank(ascending=False, method="min")
+        .astype(int)
+    )
     df["percentile_1500"] = (
         df["final_score"].rank(pct=True).mul(100).round(1)
     )
