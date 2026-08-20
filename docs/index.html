@@ -26,8 +26,32 @@
     --down: #f0443b;
     --down-bg: #351512;
     --flat-bg: #23232a;
+    --nav-bg: rgba(0,0,0,.92);
+    --tabbar-bg: rgba(10,10,10,.88);
+    --tile: #f2f2f4;
+    --seg-active: #3a3a40;
+    --baseline: #3a3a40;
+    --brand-hi: #ff5a67;
     --chip-w: 4.6em;
     --tabbar-h: calc(52px + env(safe-area-inset-bottom));
+  }
+  body[data-theme="rh"] {
+    --brand: #00c805; --brand-hi: #5dff85;
+    --up: #00c805; --up-bg: #062e10;
+    --down: #ff5000; --down-bg: #38150a;
+  }
+  body[data-theme="fid"] {
+    --bg: #f2f4f6; --surface: #ffffff; --surface-2: #e7ebef;
+    --hairline: #d6dce2; --text: #15181c; --text-2: #4d5866; --text-3: #8a94a1;
+    --brand: #368727; --brand-hi: #5aa74a;
+    --up: #1e7d34; --up-bg: #ddefe1;
+    --down: #c62828; --down-bg: #f9e0de;
+    --flat-bg: #e7ebef;
+    --nav-bg: rgba(255,255,255,.92);
+    --tabbar-bg: rgba(250,251,252,.92);
+    --tile: #ffffff;
+    --seg-active: #cfd7de;
+    --baseline: #c2c9d1;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html { background: var(--bg); height: 100%; }
@@ -53,13 +77,15 @@
 
   /* ---------- sticky header (home) ---------- */
   .hdr {
-    position: sticky; top: 0; z-index: 20; background: rgba(0,0,0,.92);
+    position: sticky; top: 0; z-index: 20; background: var(--nav-bg);
     backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--hairline);
     padding-top: env(safe-area-inset-top);
   }
   .brandrow { display: flex; align-items: baseline; gap: 8px; padding: 12px 16px 6px; }
-  .brandrow .mark { align-self: center; flex: none; filter: drop-shadow(0 0 3px rgba(217,18,34,.6)); }
+  .brandrow .mark { align-self: center; flex: none; filter: drop-shadow(0 0 3px var(--brand)); }
+  .mark path { stroke: var(--brand); }
+  .mark circle { fill: var(--brand-hi); }
   .brandrow h1 { margin: 0; font-size: 1.05rem; font-weight: 700; letter-spacing: .01em; }
   .brandrow .asof { margin-left: auto; color: var(--text-3); font-size: .72rem; }
 
@@ -85,7 +111,7 @@
     background: none; border: none; color: var(--text-2); border-radius: 7px;
     font: 600 .74rem/1 inherit; padding: 6px 9px; cursor: pointer; white-space: nowrap;
   }
-  .seg button.active { background: #3a3a40; color: var(--text); }
+  .seg button.active { background: var(--seg-active); color: var(--text); }
 
   .colhead {
     display: flex; align-items: center; padding: 4px 16px 6px;
@@ -103,7 +129,7 @@
   .row:active { background: var(--surface); }
   .logo {
     width: 34px; height: 34px; border-radius: 50%; flex: none;
-    background: #f2f2f4; object-fit: contain; padding: 5px;
+    background: var(--tile); object-fit: contain; padding: 5px;
     border: 1px solid var(--hairline);
     opacity: 0; transition: opacity .25s ease;
   }
@@ -118,6 +144,7 @@
   .mono.seco { color: var(--text); font-size: .85rem; }
   .id { flex: 1; min-width: 0; }
   .id .t { font-weight: 700; font-size: .95rem; letter-spacing: .01em; }
+  .id .wstar { color: #f5b93e; font-size: .75rem; vertical-align: 1px; }
   .id .n { color: var(--text-2); font-size: .76rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chip {
     width: var(--chip-w); margin-left: 8px; flex: none;
@@ -131,6 +158,7 @@
   .more { display: block; width: calc(100% - 32px); margin: 14px 16px; padding: 11px;
     background: var(--surface-2); color: var(--text-2); border: none; border-radius: 9px;
     font: 600 .85rem inherit; cursor: pointer; }
+  .more[hidden] { display: none; }
   #status { padding: 48px 16px; text-align: center; color: var(--text-3); }
 
   /* ---------- stock detail screen (slides over the content area only,
@@ -144,7 +172,7 @@
   #stock.open { transform: translateX(0); visibility: visible; }
   .navbar {
     position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 4px;
-    background: rgba(0,0,0,.92); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    background: var(--nav-bg); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--hairline);
     padding: calc(10px + env(safe-area-inset-top)) 8px 10px;
   }
@@ -152,7 +180,12 @@
     background: none; border: none; color: var(--text); cursor: pointer;
     display: flex; align-items: center; gap: 2px; font: 600 .9rem inherit; padding: 4px 8px;
   }
-  .navbar .title { font-weight: 700; font-size: 1rem; margin: 0 auto; padding-right: 56px; }
+  .navbar .title { font-weight: 700; font-size: 1rem; margin: 0 auto; }
+  .navbar .star {
+    background: none; border: none; color: var(--text-3); cursor: pointer;
+    font-size: 1.35rem; line-height: 1; padding: 2px 10px; width: 56px;
+  }
+  .navbar .star.on { color: #f5b93e; }
 
   .sheader { display: flex; align-items: center; gap: 14px; padding: 18px 16px 4px; }
   .sheader .logo { width: 52px; height: 52px; border-radius: 50%; padding: 8px; }
@@ -233,7 +266,7 @@
   /* ---------- bottom tab bar (in-flow frame element, translucent) ---------- */
   .tabbar {
     flex: none; display: flex; z-index: 50;
-    background: rgba(10,10,10,.88); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    background: var(--tabbar-bg); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     border-top: 1px solid var(--hairline);
     padding-bottom: env(safe-area-inset-bottom);
   }
@@ -255,11 +288,12 @@
   <div class="screen" id="home">
     <div class="hdr">
       <div class="brandrow">
-        <svg class="mark" width="26" height="13" viewBox="0 0 100 46" fill="none"><path d="M4 41 C 22 41, 26 24, 38 26 S 58 34, 68 22 S 86 4, 96 5" stroke="#e8192c" stroke-width="9" stroke-linecap="round"/><circle cx="96" cy="5" r="7" fill="#ff5a67"/></svg>
+        <svg class="mark" width="26" height="13" viewBox="0 0 100 46" fill="none"><path d="M4 41 C 22 41, 26 24, 38 26 S 58 34, 68 22 S 86 4, 96 5" stroke-width="9" stroke-linecap="round"/><circle cx="96" cy="5" r="7"/></svg>
         <h1>S&amp;P 1500 Momentum</h1>
         <span class="asof" id="asof"></span>
       </div>
       <div class="tabs" id="tabs">
+        <button data-view="watch">★</button>
         <button data-view="all" class="active">1500</button>
         <button data-view="sp500">S&amp;P 500</button>
         <button data-view="sp400">Mid 400</button>
@@ -302,6 +336,12 @@
       <p><b>12-1 / 6-1 return</b> — how much the stock moved over the past 12 or 6 months, skipping the most recent month.</p>
       <p><b>Volatility</b> — how bumpy the ride was, from daily price swings, annualized.</p>
       <p><b>VAR (volatility-adjusted return)</b> — return divided by volatility: reward per unit of risk. The list is ordered by <b>Avg. VAR</b>, the average of the 12-1 and 6-1 VARs.</p>
+      <h3>Theme</h3>
+      <div class="seg" id="themeseg" style="display:inline-flex">
+        <button data-theme="">IBKR</button>
+        <button data-theme="rh">Robinhood</button>
+        <button data-theme="fid">Fidelity</button>
+      </div>
       <h3>Fine print</h3>
       <p>Research use only — not investment advice. Data may contain errors.</p>
     </div>
@@ -315,6 +355,7 @@
         Back
       </button>
       <span class="title" id="stitle"></span>
+      <button class="star" id="star" aria-label="watchlist">☆</button>
     </div>
     <div id="sbody"></div>
   </div>
@@ -349,6 +390,23 @@ const INDEX_NAME = {sp500: "S&P 500", sp400: "S&P MidCap 400", sp600: "S&P Small
 const LOGO = s => "https://images.financialmodelingprep.com/symbol/" + encodeURIComponent(s.replace(".", "-")) + ".png";
 
 let DATA = null, IDX = {}, BYSYM = {}, view = "all", mode = "voladj", query = "", shown = 0, current = [];
+const WATCH = new Set((() => { try { return JSON.parse(localStorage.getItem("watch") || "[]"); } catch (e) { return []; } })());
+function saveWatch() { try { localStorage.setItem("watch", JSON.stringify([...WATCH])); } catch (e) {} }
+
+// theme boot (before first paint of content)
+const THEME_COLORS = {"": "#000000", rh: "#000000", fid: "#f2f4f6"};
+function applyTheme(t) {
+  document.body.dataset.theme = t;
+  document.querySelector('meta[name="theme-color"]').setAttribute("content", THEME_COLORS[t] || "#000000");
+  for (const b of document.querySelectorAll("#themeseg button"))
+    b.classList.toggle("active", b.dataset.theme === t);
+  try { localStorage.setItem("theme", t); } catch (e) {}
+}
+applyTheme(localStorage.getItem("theme") || "");
+document.getElementById("themeseg").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  applyTheme(b.dataset.theme);
+});
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 
@@ -442,7 +500,8 @@ function chip(v, cfg) {
 /* ---------- home list ---------- */
 function rowsFor() {
   let rs = DATA.rows;
-  if (view !== "all") rs = rs.filter(r => r[IDX.index] === view);
+  if (view === "watch") rs = rs.filter(r => WATCH.has(r[IDX.symbol]));
+  else if (view !== "all") rs = rs.filter(r => r[IDX.index] === view);
   if (query) {
     const q = query.toLowerCase();
     rs = rs.filter(r =>
@@ -463,14 +522,18 @@ function render(reset) {
     const el = document.createElement("div");
     el.className = "row";
     el.innerHTML =
-      '<div class="id"><div class="t">' + esc(sym) + '</div><div class="n">' + esc(r[IDX.name]) + "</div></div>" +
+      '<div class="id"><div class="t">' + esc(sym) + (WATCH.has(sym) ? ' <span class="wstar">★</span>' : "") + '</div><div class="n">' + esc(r[IDX.name]) + "</div></div>" +
       chip(r[IDX[cfg.cols[0]]], cfg) + chip(r[IDX[cfg.cols[1]]], cfg);
     el.prepend(logoEl(sym, "logo"));
     el.addEventListener("click", () => { location.hash = "#/s/" + encodeURIComponent(sym); });
     frag.appendChild(el);
   }
   shown = upto;
-  document.getElementById("list").appendChild(frag);
+  const list = document.getElementById("list");
+  list.appendChild(frag);
+  if (!current.length && view === "watch") {
+    list.innerHTML = '<div class="chart-note" style="padding:28px 16px;text-align:center">Nothing here yet. Open a stock and tap the ☆ to add it to your watchlist.</div>';
+  }
   document.getElementById("more").hidden = shown >= current.length;
   document.getElementById("modelabel").textContent = cfg.label;
 }
@@ -570,9 +633,9 @@ function renderChart(box, data, rangeKey) {
         '<stop offset="0" stop-color="' + col + '" stop-opacity=".18"/>' +
         '<stop offset="1" stop-color="' + col + '" stop-opacity="0"/></linearGradient></defs>' +
       '<path d="' + area + '" fill="url(#cg)"/>' +
-      '<line x1="0" x2="' + W + '" y1="' + y(first).toFixed(1) + '" y2="' + y(first).toFixed(1) + '" stroke="#3a3a40" stroke-width="1" stroke-dasharray="3,6" vector-effect="non-scaling-stroke"/>' +
+      '<line x1="0" x2="' + W + '" y1="' + y(first).toFixed(1) + '" y2="' + y(first).toFixed(1) + '" stroke="var(--baseline)" stroke-width="1" stroke-dasharray="3,6" vector-effect="non-scaling-stroke"/>' +
       '<path d="' + path + '" fill="none" stroke="' + col + '" stroke-width="2" vector-effect="non-scaling-stroke"/>' +
-      '<line id="crLine" x1="0" x2="0" y1="0" y2="' + H + '" stroke="#6c6c74" stroke-width="1" visibility="hidden" vector-effect="non-scaling-stroke"/>' +
+      '<line id="crLine" x1="0" x2="0" y1="0" y2="' + H + '" stroke="var(--text-3)" stroke-width="1" visibility="hidden" vector-effect="non-scaling-stroke"/>' +
       '<circle id="crDot" r="7" fill="' + col + '" visibility="hidden"/>' +
     "</svg>" +
     '<div class="ranges">' + RANGES.map(r =>
@@ -587,21 +650,34 @@ function renderChart(box, data, rangeKey) {
     crDelta.textContent = pctv(delta); crDelta.className = "cr-delta " + (up ? "up" : "down");
     crSub.textContent = "past " + rangeKey.replace("1M", "month").replace("3M", "3 months").replace("6M", "6 months").replace("1Y", "year");
   };
-  const scrub = e => {
+  // Smooth scrubbing: the crosshair tracks the finger continuously (price
+  // linearly interpolated between the two neighboring closes) and updates are
+  // batched into animation frames; the readout date snaps to the nearest day.
+  let raf = 0, pendingX = null;
+  const applyScrub = () => {
+    raf = 0;
     const rect = svg.getBoundingClientRect();
-    const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-    const i = Math.round(frac * (closes.length - 1));
-    const d = closes[i] / first - 1;
-    crLine.setAttribute("x1", x(i)); crLine.setAttribute("x2", x(i)); crLine.setAttribute("visibility", "visible");
-    crDot.setAttribute("cx", x(i)); crDot.setAttribute("cy", y(closes[i])); crDot.setAttribute("visibility", "visible");
-    crMain.textContent = "$" + closes[i].toFixed(2);
+    const frac = Math.min(1, Math.max(0, (pendingX - rect.left) / rect.width));
+    const fi = frac * (closes.length - 1);
+    const i0 = Math.floor(fi), i1 = Math.min(closes.length - 1, i0 + 1), t = fi - i0;
+    const price = closes[i0] + (closes[i1] - closes[i0]) * t;
+    const cx = frac * W;
+    const d = price / first - 1;
+    crLine.setAttribute("x1", cx); crLine.setAttribute("x2", cx); crLine.setAttribute("visibility", "visible");
+    crDot.setAttribute("cx", cx); crDot.setAttribute("cy", y(price)); crDot.setAttribute("visibility", "visible");
+    crMain.textContent = "$" + price.toFixed(2);
     crDelta.textContent = pctv(d); crDelta.className = "cr-delta " + (d >= 0 ? "up" : "down");
-    crSub.textContent = day(dates[i]);
+    crSub.textContent = day(dates[Math.round(fi)]);
   };
-  svg.addEventListener("pointerdown", scrub);
+  const scrub = e => {
+    pendingX = e.clientX;
+    if (!raf) raf = requestAnimationFrame(applyScrub);
+  };
+  svg.addEventListener("pointerdown", e => { svg.setPointerCapture(e.pointerId); scrub(e); });
   svg.addEventListener("pointermove", e => { if (e.buttons || e.pointerType === "touch") scrub(e); });
   svg.addEventListener("pointerup", reset);
-  svg.addEventListener("pointerleave", reset);
+  svg.addEventListener("pointercancel", reset);
+  svg.addEventListener("pointerleave", e => { if (!e.buttons) reset(); });
   box.querySelector(".ranges").addEventListener("click", e => {
     const b = e.target.closest("button"); if (!b) return;
     renderChart(box, data, b.dataset.range);
@@ -681,6 +757,18 @@ function showStock(sym) {
     const sec = c.closest("section");
     if (sec) sec.after(ex); else body.appendChild(ex);
   });
+  const star = document.getElementById("star");
+  const paint = () => {
+    star.textContent = WATCH.has(sym) ? "★" : "☆";
+    star.classList.toggle("on", WATCH.has(sym));
+  };
+  paint();
+  star.onclick = () => {
+    WATCH.has(sym) ? WATCH.delete(sym) : WATCH.add(sym);
+    saveWatch();
+    paint();
+    render(true);
+  };
   panel.classList.add("open");
   panel.scrollTop = 0;
   loadChart(sym);
