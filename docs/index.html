@@ -32,7 +32,7 @@
     --seg-active: #3a3a40;
     --baseline: #3a3a40;
     --brand-hi: #ff5a67;
-    --chip-w: 4.5em;
+    --chip-w: 4.3rem;
     --tabbar-h: calc(52px + env(safe-area-inset-bottom));
   }
   body[data-theme="rh"] {
@@ -126,7 +126,8 @@
     text-transform: uppercase; letter-spacing: .06em;
   }
   .colhead .l { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .colhead .m { width: var(--chip-w); text-align: right; margin-left: 8px; }
+  .colhead .m { width: var(--chip-w); text-align: right; margin-left: 18px; }
+  .colhead .sp { width: 37px; flex: none; }
 
   /* ---------- card rows ---------- */
   .row {
@@ -326,7 +327,7 @@
           <button data-mode="vol">Vol</button>
         </div>
       </div>
-      <div class="colhead"><span class="l" id="modelabel">VAR — reward per risk</span><span class="m">12M</span><span class="m">6M</span></div>
+      <div class="colhead"><span class="l" id="modelabel">VAR — reward per risk</span><span class="m">12M</span><span class="m">6M</span><span class="sp"></span></div>
     </div>
     <div id="status">Loading&hellip;</div>
     <div class="list" id="list"></div>
@@ -410,7 +411,7 @@ const WATCH = new Set((() => { try { return JSON.parse(localStorage.getItem("wat
 function saveWatch() { try { localStorage.setItem("watch", JSON.stringify([...WATCH])); } catch (e) {} }
 
 // theme boot (before first paint of content)
-const THEME_COLORS = {"": "#000000", rh: "#000000", fid: "#f2f4f6"};
+const THEME_COLORS = {"": "#000000", rh: "#0d1015", fid: "#f2f4f6"};
 function applyTheme(t) {
   document.body.dataset.theme = t;
   document.querySelector('meta[name="theme-color"]').setAttribute("content", THEME_COLORS[t] || "#000000");
@@ -418,7 +419,7 @@ function applyTheme(t) {
     b.classList.toggle("active", b.dataset.theme === t);
   try { localStorage.setItem("theme", t); } catch (e) {}
 }
-applyTheme(localStorage.getItem("theme") || "");
+applyTheme((() => { try { return localStorage.getItem("theme") || ""; } catch (e) { return ""; } })());
 document.getElementById("themeseg").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   applyTheme(b.dataset.theme);
@@ -629,9 +630,7 @@ const RANGES = [{k: "1M", n: 22}, {k: "3M", n: 64}, {k: "6M", n: 127}, {k: "1Y",
 function fetchPrices(sym) {
   if (PRICE_CACHE[sym]) return Promise.resolve(PRICE_CACHE[sym]);
   const tryUrl = url => fetch(url, {cache: "no-store"}).then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
-  return tryUrl(PRICE_URL(sym))
-    .catch(() => tryUrl("data/prices/" + sym.replace(".", "_") + ".json"))
-    .then(d => { PRICE_CACHE[sym] = d; return d; });
+  return tryUrl(PRICE_URL(sym)).then(d => { PRICE_CACHE[sym] = d; return d; });
 }
 
 function renderChart(box, data, rangeKey) {

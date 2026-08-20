@@ -60,10 +60,15 @@ jobs:
           else
             git commit -m "Update rankings data ($(date -u +%F))"
             # main may have moved during the long pipeline run; rebase and retry
+            pushed=""
             for i in 1 2 3; do
-              git push && break
+              if git push; then pushed=1; break; fi
               git pull --rebase origin "${GITHUB_REF_NAME}" || exit 1
             done
+            if [ -z "$pushed" ]; then
+              echo "::error::failed to push rankings data after 3 attempts"
+              exit 1
+            fi
           fi
 
   deploy:

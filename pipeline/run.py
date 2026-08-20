@@ -9,11 +9,14 @@ Exits non-zero if validation fails.
 from __future__ import annotations
 
 import argparse
+import math
 import json
 import logging
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+
+import pandas as pd
 
 from . import constituents as cons
 from . import metrics, prices, validate
@@ -121,12 +124,24 @@ def main(argv: list[str] | None = None) -> int:
         "excluded": sorted(excluded, key=lambda x: (x["index"], x["symbol"])),
         "sectors": sec.to_dict("records"),
         "columns": TABLE_COLUMNS,
-        "rows": table[TABLE_COLUMNS].where(table[TABLE_COLUMNS].notna(), None).values.tolist(),
+        # NaN/inf must become JSON null: pandas' .where(notna(), None) is a
+        # no-op on float columns, so convert explicitly.
+        "rows": [
+            [
+                None
+                if (isinstance(v, float) and not math.isfinite(v)) or pd.isna(v)
+                else v
+                for v in row
+            ]
+            for row in table[TABLE_COLUMNS].values.tolist()
+        ],
     }
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
-    blob = json.dumps(payload, separators=(",", ":"))
+    # allow_nan=False makes the pipeline fail loudly rather than ever
+    # publishing NaN/Infinity literals, which are invalid JSON.
+    blob = json.dumps(payload, separators=(",", ":"), allow_nan=False)
     out.write_text(blob)
 
     # Daily snapshot archive: one file per as-of date plus a date index, so the
