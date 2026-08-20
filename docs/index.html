@@ -126,8 +126,14 @@
     text-transform: uppercase; letter-spacing: .06em;
   }
   .colhead .l { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .colhead .m { width: var(--chip-w); text-align: right; margin-left: 18px; }
-  .colhead .sp { width: 37px; flex: none; }
+
+  .pills { display: flex; gap: 7px; padding: 2px 12px 11px; overflow-x: auto; scrollbar-width: none; }
+  .pills::-webkit-scrollbar { display: none; }
+  .pills button {
+    flex: none; background: var(--surface-2); border: 1px solid transparent; color: var(--text-2);
+    border-radius: 999px; font: 600 .8rem/1 inherit; padding: 8px 14px; cursor: pointer;
+  }
+  .pills button.active { background: var(--seg-active); color: var(--text); border-color: var(--hairline); }
 
   /* ---------- card rows ---------- */
   .row {
@@ -156,12 +162,27 @@
   .mono.seco { color: var(--text); font-size: .9rem; }
   .id { flex: 1; min-width: 0; }
   .id .t { font-weight: 700; font-size: 1.02rem; letter-spacing: .01em; }
+  .tags { display: flex; gap: 5px; margin-top: 5px; }
+  .tags span {
+    background: var(--flat-bg); color: var(--text-3); border-radius: 5px;
+    font-size: .64rem; font-weight: 600; padding: 2px 6px; letter-spacing: .03em;
+    white-space: nowrap;
+  }
+  .val { flex: none; text-align: right; min-width: 4.6rem; }
+  .val .vv { font-size: 1.08rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .val .vv.up { color: var(--up); } .val .vv.down { color: var(--down); }
+  .val .vl { color: var(--text-3); font-size: .62rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-top: 2px; }
+  .sic {
+    width: 42px; height: 42px; border-radius: 50%; flex: none;
+    display: flex; align-items: center; justify-content: center;
+  }
   .rstar {
     flex: none; background: none; border: none; color: var(--text-3);
-    font-size: 1.15rem; line-height: 1; padding: 8px 0 8px 6px; margin-left: 0;
-    cursor: pointer;
+    line-height: 0; padding: 8px 0 8px 4px; cursor: pointer;
   }
-  .rstar.on { color: #f5b93e; }
+  .rstar svg { stroke: currentColor; fill: none; stroke-width: 1.6; }
+  .rstar.on { color: #e7a93c; }
+  .rstar.on svg { fill: #e7a93c; stroke: #e7a93c; }
   .id .n { color: var(--text-2); font-size: .8rem; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chip {
     width: var(--chip-w); margin-left: 6px; flex: none;
@@ -355,13 +376,14 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input id="search" type="search" placeholder="Symbol or company" autocomplete="off">
         </label>
-        <div class="seg" id="seg">
-          <button data-mode="voladj" class="active">VAR</button>
-          <button data-mode="ret">Return</button>
-          <button data-mode="vol">Vol</button>
-        </div>
       </div>
-      <div class="colhead"><span class="l" id="modelabel">VAR — reward per risk</span><span class="m">12M</span><span class="m">6M</span><span class="sp"></span></div>
+      <div class="pills" id="pills">
+        <button data-mode="var" class="active">Avg VAR</button>
+        <button data-mode="r12">Ret 12-1</button>
+        <button data-mode="r6">Ret 6-1</button>
+        <button data-mode="v12">Vol 12M</button>
+        <button data-mode="mcap">Mkt Cap</button>
+      </div>
     </div>
     <div id="status">Loading&hellip;</div>
     <div class="list" id="list"></div>
@@ -371,7 +393,7 @@
   <!-- ===== sectors screen ===== -->
   <div class="screen" id="sectors" hidden>
     <div class="navbar"><span class="title">Sectors</span></div>
-    <div class="colhead" style="padding-top:10px"><span class="l">Equal-weighted VAR</span><span class="m">12-1</span><span class="m">6-1</span></div>
+    <div class="colhead" style="padding-top:12px"><span class="l">Ranked by equal-weighted Avg VAR</span></div>
     <div id="seclist"></div>
     <div class="hint" style="padding:12px 16px">Every stock counts equally — no size weighting. Ranked by the average of the two VARs. Tap a sector to see its stocks.</div>
   </div>
@@ -441,16 +463,28 @@
 
 <script>
 "use strict";
+const mcapFmt = v => v >= 1e12 ? "$" + (v / 1e12).toFixed(2) + "T" : v >= 1e9 ? "$" + (v / 1e9).toFixed(v < 1e10 ? 1 : 0) + "B" : "$" + (v / 1e6).toFixed(0) + "M";
 const MODES = {
-  voladj: {label: "VAR — reward per risk", cols: ["score_12", "score_6"], fmt: v => v.toFixed(2), signed: true},
-  ret:    {label: "Return (12-1 / 6-1)", cols: ["return_12_1", "return_6_1"], fmt: v => (v > 0 && v < 10 ? "+" : "") + (v * 100).toFixed(0) + "%", signed: true},
-  vol:    {label: "Annualized volatility", cols: ["volatility_12m", "volatility_6m"], fmt: v => (v * 100).toFixed(0) + "%", signed: false},
+  var:  {label: "Avg VAR", col: "final_score", fmt: v => v.toFixed(2), signed: true},
+  r12:  {label: "Ret 12-1", col: "return_12_1", fmt: v => (v > 0 && v < 10 ? "+" : "") + (v * 100).toFixed(0) + "%", signed: true},
+  r6:   {label: "Ret 6-1", col: "return_6_1", fmt: v => (v > 0 && v < 10 ? "+" : "") + (v * 100).toFixed(0) + "%", signed: true},
+  v12:  {label: "Vol 12M", col: "volatility_12m", fmt: v => (v * 100).toFixed(0) + "%", signed: false},
+  mcap: {label: "Mkt Cap", col: "market_cap", fmt: mcapFmt, signed: false},
 };
+const INDEX_SHORT = {sp500: "S&P 500", sp400: "MID 400", sp600: "SMALL 600"};
+const SECTOR_SHORT = {
+  "Information Technology": "INFO TECH", "Communication Services": "COMM SVCS",
+  "Consumer Discretionary": "CONS DISC", "Consumer Staples": "CONS STAPLES",
+  "Health Care": "HEALTH CARE", "Real Estate": "REAL ESTATE",
+  "Financials": "FINANCIALS", "Industrials": "INDUSTRIALS",
+  "Materials": "MATERIALS", "Utilities": "UTILITIES", "Energy": "ENERGY",
+};
+const STAR_SVG = '<svg width="21" height="21" viewBox="0 0 24 24"><path stroke-linejoin="round" d="M12 4.2l2.45 4.96 5.48.8-3.96 3.86.93 5.45L12 16.7l-4.9 2.57.93-5.45L4.07 9.96l5.48-.8z"/></svg>';
 const PAGE = 80;
 const INDEX_NAME = {sp500: "S&P 500", sp400: "S&P MidCap 400", sp600: "S&P SmallCap 600"};
 const LOGO = s => "https://images.financialmodelingprep.com/symbol/" + encodeURIComponent(s.replace(".", "-")) + ".png";
 
-let DATA = null, IDX = {}, BYSYM = {}, view = "all", mode = "voladj", query = "", shown = 0, current = [];
+let DATA = null, IDX = {}, BYSYM = {}, view = "all", mode = "var", query = "", shown = 0, current = [];
 const POS = (() => { try { return JSON.parse(localStorage.getItem("positions") || "{}"); } catch (e) { return {}; } })();
 function savePos() { try { localStorage.setItem("positions", JSON.stringify(POS)); } catch (e) {} }
 const money = v => "$" + v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -576,6 +610,14 @@ function rowsFor() {
       String(r[IDX.name]).toLowerCase().includes(q) ||
       String(r[IDX.sector]).toLowerCase().includes(q));
   }
+  // rank by the selected metric (nulls last)
+  const i = IDX[MODES[mode].col];
+  rs = rs.slice().sort((a, b) => {
+    const av = a[i], bv = b[i];
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return bv - av;
+  });
   return rs;
 }
 function render(reset) {
@@ -589,10 +631,14 @@ function render(reset) {
     const el = document.createElement("div");
     el.className = "row";
     const on = WATCH.has(sym);
+    const v = r[IDX[cfg.col]];
+    const vcls = v == null ? "" : cfg.signed ? (v > 0 ? "up" : v < 0 ? "down" : "") : "";
     el.innerHTML =
-      '<div class="id"><div class="t">' + esc(sym) + '</div><div class="n">' + esc(r[IDX.name]) + "</div></div>" +
-      chip(r[IDX[cfg.cols[0]]], cfg) + chip(r[IDX[cfg.cols[1]]], cfg) +
-      '<button class="rstar' + (on ? " on" : "") + '" aria-label="watchlist">' + (on ? "★" : "☆") + "</button>";
+      '<div class="id"><div class="t">' + esc(sym) + '</div><div class="n">' + esc(r[IDX.name]) + '</div>' +
+        '<div class="tags"><span>' + INDEX_SHORT[r[IDX.index]] + "</span>" +
+        (r[IDX.sector] ? "<span>" + (SECTOR_SHORT[r[IDX.sector]] || esc(r[IDX.sector]).toUpperCase()) + "</span>" : "") + "</div></div>" +
+      '<div class="val"><div class="vv ' + vcls + '">' + (v == null ? "—" : cfg.fmt(v)) + '</div><div class="vl">' + cfg.label + "</div></div>" +
+      '<button class="rstar' + (on ? " on" : "") + '" aria-label="watchlist">' + STAR_SVG + "</button>";
     el.prepend(logoEl(sym, "logo"));
     el.querySelector(".rstar").addEventListener("click", e => {
       e.stopPropagation();
@@ -600,7 +646,6 @@ function render(reset) {
       const now = !WATCH.has(sym);
       now ? WATCH.add(sym) : WATCH.delete(sym);
       saveWatch();
-      btn.textContent = now ? "★" : "☆";
       btn.classList.toggle("on", now);
       if (view === "watch") render(true);
     });
@@ -614,7 +659,6 @@ function render(reset) {
     list.innerHTML = '<div class="chart-note" style="padding:28px 16px;text-align:center">Nothing here yet. Open a stock and tap the ☆ to add it to your watchlist.</div>';
   }
   document.getElementById("more").hidden = shown >= current.length;
-  document.getElementById("modelabel").textContent = cfg.label;
 }
 function refresh() { render(true); }
 
@@ -971,16 +1015,19 @@ window.addEventListener("hashchange", route);
 function renderSectors() {
   const list = document.getElementById("seclist");
   const frag = document.createDocumentFragment();
-  for (const s of DATA.sectors || []) {
+  for (const sec of DATA.sectors || []) {
     const el = document.createElement("div");
     el.className = "row";
+    const meta = SECTOR_ICONS[sec.sector] || {h: 210, d: "M4 17l5-6 4 3 7-9"};
+    const cls = sec.final_score > 0 ? "up" : sec.final_score < 0 ? "down" : "";
     el.innerHTML =
-      '<div class="mono seco">' + s.rank + "</div>" +
-      '<div class="id"><div class="t">' + esc(s.sector) + '</div><div class="n">' + s.count + " stocks · equal-weighted</div></div>" +
-      chip(s.score_12, MODES.voladj) + chip(s.score_6, MODES.voladj);
+      '<div class="sic" style="background:hsl(' + meta.h + ' 30% 20%)">' +
+        '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="hsl(' + meta.h + ' 65% 68%)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + meta.d + "</svg></div>" +
+      '<div class="id"><div class="t">' + esc(sec.sector) + '</div><div class="n">#' + sec.rank + " · " + sec.count + " stocks</div></div>" +
+      '<div class="val"><div class="vv ' + cls + '">' + sec.final_score.toFixed(2) + '</div><div class="vl">EW Avg VAR</div></div>';
     el.addEventListener("click", () => {
-      document.getElementById("search").value = s.sector;
-      query = s.sector;
+      document.getElementById("search").value = sec.sector;
+      query = sec.sector;
       refresh();
       location.hash = "#/";
       document.getElementById("home").scrollTo({top: 0});
@@ -990,6 +1037,20 @@ function renderSectors() {
   list.innerHTML = "";
   list.appendChild(frag);
 }
+
+const SECTOR_ICONS = {
+  "Energy": {h: 28, d: '<path d="M12 3c2.2 3 5 5.2 5 9a5 5 0 0 1-10 0c0-3.8 2.8-6 5-9z"/>'},
+  "Information Technology": {h: 210, d: '<rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M9 4v3M15 4v3M9 17v3M15 17v3M4 9h3M4 15h3M17 9h3M17 15h3"/>'},
+  "Real Estate": {h: 260, d: '<path d="M4 21h16M6 21V9.5L12 5l6 4.5V21"/><path d="M10 21v-5h4v5"/>'},
+  "Financials": {h: 150, d: '<path d="M12 3l9 6H3l9-6zM5 9v9M10 9v9M14 9v9M19 9v9M3 20h18"/>'},
+  "Health Care": {h: 350, d: '<path d="M9 4h6v5h5v6h-5v5H9v-5H4V9h5V4z"/>'},
+  "Utilities": {h: 48, d: '<path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/>'},
+  "Industrials": {h: 200, d: '<path d="M3 21h18M5 21V11l5 3v-3l5 3V9h4v12"/>'},
+  "Communication Services": {h: 185, d: '<circle cx="12" cy="11" r="2"/><path d="M12 13v7M7.5 6.5a6.5 6.5 0 0 1 9 0M5 4a10 10 0 0 1 14 0"/>'},
+  "Materials": {h: 90, d: '<path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5"/>'},
+  "Consumer Discretionary": {h: 300, d: '<path d="M6 8h12l-1.2 12H7.2L6 8z"/><path d="M9 8a3 3 0 0 1 6 0"/>'},
+  "Consumer Staples": {h: 130, d: '<circle cx="9.5" cy="20" r="1"/><circle cx="16.5" cy="20" r="1"/><path d="M3 4h2l3 12h10l2-8H7"/>'},
+};
 
 /* ---------- events ---------- */
 document.getElementById("tabbar").addEventListener("click", e => {
@@ -1004,11 +1065,12 @@ document.getElementById("tabs").addEventListener("click", e => {
   refresh();
   document.getElementById("home").scrollTo({top: 0});
 });
-document.getElementById("seg").addEventListener("click", e => {
+document.getElementById("pills").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   mode = b.dataset.mode;
-  for (const x of document.querySelectorAll("#seg button")) x.classList.toggle("active", x === b);
+  for (const x of document.querySelectorAll("#pills button")) x.classList.toggle("active", x === b);
   refresh();
+  document.getElementById("home").scrollTo({top: 0});
 });
 document.getElementById("search").addEventListener("input", e => { query = e.target.value.trim(); refresh(); });
 document.getElementById("more").addEventListener("click", () => render(false));
