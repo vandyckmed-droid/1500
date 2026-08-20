@@ -1,13 +1,17 @@
-name: Update rankings
+name: Update rankings and deploy site
 
 on:
   schedule:
     # 05:30 UTC Tue-Sat = after each US trading day's close (EOD data settled).
     - cron: "30 5 * * 2-6"
   workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: update-rankings
@@ -15,6 +19,8 @@ concurrency:
 
 jobs:
   update:
+    # Refresh data on schedule/manual runs; plain pushes just redeploy the site.
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,3 +50,27 @@ jobs:
             git commit -m "Update rankings data ($(date -u +%F))"
             git push
           fi
+
+  deploy:
+    needs: update
+    # Run even when the update job was skipped (push events).
+    if: always() && (needs.update.result == 'success' || needs.update.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main  # pick up the data commit made by the update job
+
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
