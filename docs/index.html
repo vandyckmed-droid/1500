@@ -347,6 +347,7 @@
           <button data-mode="ret">Return</button>
           <button data-mode="vol">Vol</button>
           <button data-mode="mcap">MCap</button>
+          <button data-mode="today">Today</button>
         </div>
       </div>
       <div class="colhead"><span class="l" id="modelabel">VAR — reward per risk</span><span class="m" id="col1">12M</span><span class="m" id="col2">6M</span><span class="sp"></span></div>
@@ -431,6 +432,7 @@ const MODES = {
   ret:    {label: "Return (12-1 / 6-1)", cols: ["return_12_1", "return_6_1"], fmt: v => (v > 0 && v < 10 ? "+" : "") + (v * 100).toFixed(0) + "%", signed: true},
   vol:    {label: "Annualized volatility", cols: ["volatility_12m", "volatility_6m"], fmt: v => (v * 100).toFixed(0) + "%", signed: false},
   mcap:   {label: "Market cap — largest first", cols: ["market_cap", null], fmt: v => v >= 1e12 ? "$" + (v / 1e12).toFixed(2) + "T" : v >= 1e9 ? "$" + (v / 1e9).toFixed(v < 1e10 ? 1 : 0) + "B" : "$" + (v / 1e6).toFixed(0) + "M", signed: false, heads: ["MCAP", ""]},
+  today:  {label: "Today — live, top 100 by rank", heads: ["PRICE", "TODAY"]},
 };
 const PAGE = 80;
 const INDEX_NAME = {sp500: "S&P 500", sp400: "S&P MidCap 400", sp600: "S&P SmallCap 600"};
@@ -593,8 +595,40 @@ function rowsFor() {
   if (mode === "mcap") {
     const i = IDX.market_cap;
     rs = rs.slice().sort((a, b) => (b[i] || 0) - (a[i] || 0));
+  } else if (mode === "today") {
+    rs = rs.slice(0, 100);
+    const chg = r => { const t = TODAYQ[r[IDX.symbol]]; return t && t.q ? t.q.c : -1e9; };
+    rs = rs.slice().sort((a, b) => chg(b) - chg(a));
   }
   return rs;
+}
+
+/* live day-change quotes for the Today mode (batched, 60s freshness) */
+const TODAYQ = {};
+let todayFetching = false;
+function ensureToday(syms) {
+  const stale = syms.filter(s => !TODAYQ[s] || Date.now() - TODAYQ[s].at > 60 * 1000);
+  if (!stale.length || todayFetching) return;
+  todayFetching = true;
+  const chunks = [];
+  for (let i = 0; i < stale.length; i += 40) chunks.push(stale.slice(i, i + 40));
+  Promise.all(chunks.map(ch =>
+    fetch(API + "/api/today?syms=" + ch.join(","))
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { const at = Date.now(); for (const s of ch) TODAYQ[s] = {q: d && d.quotes ? d.quotes[s] : null, at}; })
+      .catch(() => { const at = Date.now(); for (const s of ch) if (!TODAYQ[s]) TODAYQ[s] = {q: null, at}; })
+  )).finally(() => { todayFetching = false; if (mode === "today") render(true); });
+}
+function todayChips(sym) {
+  const t = TODAYQ[sym];
+  if (!t || !t.q) {
+    const txt = t ? "&mdash;" : "&hellip;";
+    return '<span class="chip flat">' + txt + '</span><span class="chip flat">' + txt + "</span>";
+  }
+  const q = t.q;
+  const cls = q.c > 0 ? "up" : q.c < 0 ? "down" : "flat";
+  return '<span class="chip flat">$' + (q.p >= 1000 ? q.p.toFixed(0) : q.p.toFixed(2)) + "</span>" +
+    '<span class="chip ' + cls + '">' + (q.c > 0 ? "+" : "") + q.c.toFixed(2) + "%</span>";
 }
 function render(reset) {
   const cfg = MODES[mode];
@@ -609,7 +643,8 @@ function render(reset) {
     const on = WATCH.has(sym);
     el.innerHTML =
       '<div class="id"><div class="t">' + esc(sym) + '</div><div class="n">' + esc(r[IDX.name]) + "</div></div>" +
-      chip(r[IDX[cfg.cols[0]]], cfg) + (cfg.cols[1] ? chip(r[IDX[cfg.cols[1]]], cfg) : '<span class="chip flat"></span>') +
+      (mode === "today" ? todayChips(sym)
+        : chip(r[IDX[cfg.cols[0]]], cfg) + (cfg.cols[1] ? chip(r[IDX[cfg.cols[1]]], cfg) : '<span class="chip flat"></span>')) +
       '<button class="rstar' + (on ? " on" : "") + '" aria-label="watchlist">' + (on ? "★" : "☆") + "</button>";
     el.prepend(logoEl(sym, "logo"));
     el.querySelector(".rstar").addEventListener("click", e => {
@@ -645,6 +680,7 @@ function render(reset) {
     }
   } else rev.hidden = true;
   document.getElementById("modelabel").textContent = cfg.label;
+  if (mode === "today" && current.length) ensureToday(current.map(r => r[IDX.symbol]));
   const heads = cfg.heads || ["12M", "6M"];
   document.getElementById("col1").textContent = heads[0];
   document.getElementById("col2").textContent = heads[1];
