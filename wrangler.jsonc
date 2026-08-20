@@ -1,0 +1,13 @@
+// Cloudflare Workers config: serves the static rankings site in ./docs
+// (the same directory GitHub Pages deploys) as an assets-only Worker.
+// Deployed by Cloudflare's Workers Builds Git integration, which runs
+// `npx wrangler deploy` on pushes to main.
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "1500",
+  "compatibility_date": "2026-08-20",
+  "assets": {
+    "directory": "./docs",
+    "html_handling": "auto-trailing-slash"
+  }
+}
