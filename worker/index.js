@@ -8,7 +8,7 @@
 //   GET /api/ticker/:symbol     → one row + rank context
 //   GET /api/search?q=&n=       → symbol/name/sector match, columnar
 //   GET /api/quote/:symbol      → intraday quote proxied from Yahoo Finance
-//   GET /api/analyze/:symbol    → AI explanation of the stock's ranking
+//   GET /api/analyze/:symbol    → AI explanation of what the company does
 //                                 (Workers AI, cached per symbol per as_of day)
 //   POST /api/review            → {symbols: [...]} AI watchlist review
 //   POST /api/ask               → {question, symbol?} AI Q&A about the rankings
@@ -170,29 +170,35 @@ async function apiAnalyze(env, d, symbol, requestUrl) {
   const row = d.rows.find((r) => r[d._col.symbol] === sym);
   if (!row) return json({ error: "unknown symbol", symbol: sym }, 404);
 
-  // The data changes once per night, so cache one analysis per symbol per as_of.
+  // The description is stable; cache one per symbol per as_of day (v2: company
+  // explainer replaced the ranking explainer — the bump skips stale v1 entries).
   const cacheKey = new Request(
-    new URL("/api/analyze/" + encodeURIComponent(sym) + "?as_of=" + d.as_of, requestUrl)
+    new URL("/api/analyze/" + encodeURIComponent(sym) + "?v=2&as_of=" + d.as_of, requestUrl)
   );
   const hit = await caches.default.match(cacheKey);
   if (hit) return hit;
 
   const s = rowObj(d, row);
-  const sec = (d.sectors || []).find((x) => x.sector === s.sector);
   const analysis = await aiRun(env, [
-    { role: "system", content: METHODOLOGY },
+    {
+      role: "system",
+      content:
+        "You are the built-in explainer of a stock-rankings app. Describe companies " +
+        "plainly for a retail user with no jargon. Never give buy/sell advice.",
+    },
     {
       role: "user",
       content:
-        "Explain this stock's ranking in 120-170 words as short flowing prose " +
-        "(no headings or bullet lists). Cover: what is driving its final_score " +
-        "(the return side, the volatility side, or both), how its 12-1 and 6-1 " +
-        "pictures compare, and how it sits within its index and sector. Data as of " +
-        d.as_of + ":\n" + JSON.stringify(s) +
-        "\nIts sector overall: " + JSON.stringify(sec || {}) +
-        "\nUniverse size: " + d.rows.length,
+        "In 90-140 words of flowing prose (no headings or bullets), explain what " +
+        "this company actually does: what it makes or sells, who its customers are, " +
+        "and how it makes money. If you are not fully certain about this specific " +
+        "company, stick to what its name, sector, and size imply and keep it " +
+        "general rather than inventing specifics.\n" +
+        "Company: " + s.name + " (ticker " + s.symbol + ")\n" +
+        "Sector: " + s.sector + " | Index: " + s.index +
+        (s.market_cap ? " | Market cap: $" + Math.round(s.market_cap / 1e6) + "M" : ""),
     },
-  ], 400);
+  ], 350);
 
   const res = json({ symbol: sym, as_of: d.as_of, analysis }, 200, {
     "Cache-Control": "public, max-age=86400",
