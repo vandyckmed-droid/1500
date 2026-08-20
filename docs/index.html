@@ -154,16 +154,29 @@
     background: var(--surface-2); color: var(--text-2); border-radius: 999px;
     padding: 4px 11px; font-size: .72rem; font-weight: 600;
   }
-  .ranks {
+  .hprice { margin-left: auto; text-align: right; cursor: pointer; }
+  .hprice .pv { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .hprice .pd { color: var(--text-3); font-size: .68rem; margin-top: 1px; }
+
+  .sec-label {
+    padding: 16px 16px 6px; color: var(--text-3); font-size: .68rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .08em;
+  }
+  .strip {
     display: grid; grid-template-columns: 1fr 1fr 1fr;
-    margin: 12px 16px 0; background: var(--surface);
+    margin: 0 16px; background: var(--surface);
     border: 1px solid var(--hairline); border-radius: 12px; overflow: hidden;
   }
-  .ranks .cell { padding: 11px 6px; text-align: center; }
-  .ranks .cell + .cell { border-left: 1px solid var(--hairline); }
-  .ranks .rk { color: var(--text-3); font-size: .66rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
-  .ranks .rv { font-size: 1.2rem; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
-  .ranks .rd { color: var(--text-3); font-size: .68rem; margin-top: 1px; }
+  .strip.two { grid-template-columns: 1fr 1fr; }
+  .strip .cell { padding: 11px 6px; text-align: center; }
+  .strip .cell[data-key] { cursor: pointer; }
+  .strip .cell.sel { box-shadow: inset 0 0 0 1.5px var(--brand); border-radius: 12px; }
+  .hprice.sel { box-shadow: inset 0 0 0 1.5px var(--brand); border-radius: 10px; padding: 2px 6px; }
+  .strip .cell + .cell { border-left: 1px solid var(--hairline); }
+  .strip .rk { color: var(--text-3); font-size: .66rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .strip .rv { font-size: 1.2rem; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .strip .rv.up { color: var(--up); } .strip .rv.down { color: var(--down); }
+  .strip .rd { color: var(--text-3); font-size: .68rem; margin-top: 1px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 16px 4px; }
   .card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; padding: 12px; cursor: pointer; }
   .card.sel { border-color: var(--brand); }
@@ -373,20 +386,6 @@ function render(reset) {
 function refresh() { render(true); }
 
 /* ---------- stock detail ---------- */
-function pctCard(label, v, signed, key) {
-  if (v == null) return card(label, "—", "", key);
-  const cls = signed ? (v > 0 ? "up" : v < 0 ? "down" : "") : "";
-  const txt = (signed && v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
-  return card(label, txt, cls, key);
-}
-function numCard(label, v, signed, key) {
-  if (v == null) return card(label, "—", "", key);
-  const cls = signed ? (v > 0 ? "up" : v < 0 ? "down" : "") : "";
-  return card(label, v.toFixed(2), cls, key);
-}
-function card(k, v, cls, key) {
-  return '<div class="card" data-key="' + key + '"><div class="k">' + k + '</div><div class="v ' + cls + '">' + v + "</div></div>";
-}
 const $ = v => "$" + Number(v).toFixed(2);
 const pct1 = v => (v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
 const day = d => { const [y, m, dd] = d.split("-"); return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m - 1] + " " + (+dd) + ", " + y; };
@@ -394,7 +393,7 @@ const day = d => { const [y, m, dd] = d.split("-"); return ["Jan","Feb","Mar","A
 function explainFor(g, key) {
   switch (key) {
     case "price":
-      return "The latest closing price, from <b>" + day(g("last_date")) + "</b>. All prices here are adjusted for dividends and stock splits.";
+      return "The latest closing price, from <b>" + day(DATA.as_of) + "</b>. All prices here are adjusted for dividends and stock splits.";
     case "final":
       return "Average Volatility Adjusted Returns: the mean of VAR 12-1 and VAR 6-1 below. Every stock is ranked by this." +
         '<span class="math">(' + g("score_12").toFixed(2) + " + " + g("score_6").toFixed(2) + ") ÷ 2 = <b>" + g("final_score").toFixed(2) + "</b></span>";
@@ -426,16 +425,17 @@ function countWhere(col, val) {
   for (const r of DATA.rows) if (r[i] === val) n++;
   return n;
 }
-function ranksStrip(g) {
-  const cell = (label, rank, total) =>
-    '<div class="cell"><div class="rk">' + label + '</div><div class="rv">#' + rank +
-    '</div><div class="rd">of ' + total + "</div></div>";
-  let html = '<div class="ranks">' +
-    cell("Universe", g("rank_1500"), DATA.rows.length) +
-    cell("Index", g("rank_index"), countWhere("index", g("index")));
-  if (g("sector")) html += cell("Sector", g("rank_sector"), countWhere("sector", g("sector")));
-  return html + "</div>";
+function cell(label, value, sub, key, cls) {
+  return '<div class="cell"' + (key ? ' data-key="' + key + '"' : "") + '><div class="rk">' + label +
+    '</div><div class="rv ' + (cls || "") + '">' + value + '</div>' +
+    (sub ? '<div class="rd">' + sub + "</div>" : "") + "</div>";
 }
+function section(label, inner) {
+  return '<section><div class="sec-label">' + label + "</div>" + inner + "</section>";
+}
+const signCls = v => v > 0 ? "up" : v < 0 ? "down" : "";
+const num2 = v => v == null ? "—" : v.toFixed(2);
+const pctv = v => v == null ? "—" : (v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
 
 function showStock(sym) {
   const r = BYSYM[sym];
@@ -444,35 +444,58 @@ function showStock(sym) {
   const g = c => r[IDX[c]];
   document.getElementById("stitle").textContent = sym;
   const body = document.getElementById("sbody");
+
+  const ranks =
+    '<div class="strip">' +
+      cell("Universe", "#" + g("rank_1500"), "of " + DATA.rows.length) +
+      cell("Index", "#" + g("rank_index"), "of " + countWhere("index", g("index"))) +
+      (g("sector") ? cell("Sector", "#" + g("rank_sector"), "of " + countWhere("sector", g("sector"))) : "") +
+    "</div>";
+  const vars =
+    '<div class="strip">' +
+      cell("Average", num2(g("final_score")), "ranked by this", "final", signCls(g("final_score"))) +
+      cell("12-1", num2(g("score_12")), "", "s12", signCls(g("score_12"))) +
+      cell("6-1", num2(g("score_6")), "", "s6", signCls(g("score_6"))) +
+    "</div>";
+  const rets =
+    '<div class="strip two">' +
+      cell("12-1", pctv(g("return_12_1")), "", "r12", signCls(g("return_12_1"))) +
+      cell("6-1", pctv(g("return_6_1")), "", "r6", signCls(g("return_6_1"))) +
+    "</div>";
+  const vols =
+    '<div class="strip two">' +
+      cell("12M", (g("volatility_12m") * 100).toFixed(1) + "%", "", "v12", "") +
+      cell("6M", (g("volatility_6m") * 100).toFixed(1) + "%", "", "v6", "") +
+    "</div>";
+
   body.innerHTML =
-    '<div class="sheader"><div class="id"><div class="t">' + esc(sym) + '</div><div class="n">' + esc(g("name")) + "</div></div></div>" +
+    '<div class="sheader">' +
+      '<div class="id"><div class="t">' + esc(sym) + '</div><div class="n">' + esc(g("name")) + "</div></div>" +
+      '<div class="hprice" data-key="price"><div class="pv">$' + g("last_price").toFixed(2) + '</div><div class="pd">' + day(DATA.as_of) + "</div></div>" +
+    "</div>" +
     '<div class="badges">' +
       '<span class="badge">' + INDEX_NAME[g("index")] + "</span>" +
       (g("sector") ? '<span class="badge">' + esc(g("sector")) + "</span>" : "") +
     "</div>" +
-    ranksStrip(g) +
     '<div class="hint">Tap any number to see exactly how it was calculated.</div>' +
-    '<div class="grid">' +
-      card("Price", "$" + g("last_price").toFixed(2), "", "price") +
-      numCard("Avg. VAR", g("final_score"), true, "final") +
-      pctCard("Return 12-1", g("return_12_1"), true, "r12") +
-      pctCard("Return 6-1", g("return_6_1"), true, "r6") +
-      pctCard("Volatility 12M", g("volatility_12m"), false, "v12") +
-      pctCard("Volatility 6M", g("volatility_6m"), false, "v6") +
-      numCard("VAR 12-1", g("score_12"), true, "s12") +
-      numCard("VAR 6-1", g("score_6"), true, "s6") +
-    "</div>" +
+    section("Rank", ranks) +
+    section("VAR — volatility-adjusted return", vars) +
+    section("Return (skips latest month)", rets) +
+    section("Volatility (annualized)", vols) +
     '<div class="explain" id="explain" hidden></div>';
+
   body.querySelector(".sheader").prepend(logoEl(sym, "logo"));
-  body.querySelector(".grid").addEventListener("click", e => {
-    const c = e.target.closest(".card"); if (!c) return;
+  body.onclick = (e => {
+    const c = e.target.closest("[data-key]"); if (!c) return;
     const ex = document.getElementById("explain");
     const already = c.classList.contains("sel");
-    for (const x of body.querySelectorAll(".card")) x.classList.remove("sel");
+    for (const x of body.querySelectorAll("[data-key]")) x.classList.remove("sel");
     if (already) { ex.hidden = true; return; }
     c.classList.add("sel");
     ex.innerHTML = explainFor(g, c.dataset.key);
     ex.hidden = false;
+    const sec = c.closest("section");
+    if (sec) sec.after(ex); else body.appendChild(ex);
   });
   panel.classList.add("open");
   panel.scrollTop = 0;
