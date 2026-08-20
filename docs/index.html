@@ -721,11 +721,11 @@ function explainFor(g, key) {
       return "Same bumpiness measure over just the last 6 months." +
         '<span class="math">daily swings over 6 months × √252 = <b>' + (g("volatility_6m") * 100).toFixed(1) + "%</b></span>";
     case "s12":
-      return "Volatility-adjusted return: the 12-1 return divided by the 12-month volatility. A big gain achieved smoothly scores higher than the same gain with wild swings." +
-        '<span class="math">' + pct1(g("return_12_1")) + " ÷ " + (g("volatility_12m") * 100).toFixed(1) + "% = <b>" + g("score_12").toFixed(2) + "</b></span>";
+      return "Volatility-adjusted return: the 12-1 return, annualized (× 252⁄231) so both windows share the same units, divided by the 12-month volatility. A big gain achieved smoothly scores higher than the same gain with wild swings." +
+        '<span class="math">' + pct1(g("return_12_1")) + " × 252⁄231 ÷ " + (g("volatility_12m") * 100).toFixed(1) + "% = <b>" + g("score_12").toFixed(2) + "</b></span>";
     case "s6":
-      return "Volatility-adjusted return for the shorter window: the 6-1 return divided by the 6-month volatility." +
-        '<span class="math">' + pct1(g("return_6_1")) + " ÷ " + (g("volatility_6m") * 100).toFixed(1) + "% = <b>" + g("score_6").toFixed(2) + "</b></span>";
+      return "Volatility-adjusted return for the shorter window: the 6-1 return, annualized (× 252⁄105), divided by the 6-month volatility." +
+        '<span class="math">' + pct1(g("return_6_1")) + " × 252⁄105 ÷ " + (g("volatility_6m") * 100).toFixed(1) + "% = <b>" + g("score_6").toFixed(2) + "</b></span>";
   }
   return "";
 }

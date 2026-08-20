@@ -338,8 +338,21 @@ async function ensureIngest(env, d) {
     "final_score REAL, last_price REAL, market_cap REAL, PRIMARY KEY (as_of, symbol))"
   ).run();
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS ranks_sym ON ranks(symbol, as_of)").run();
-  const have = await env.DB.prepare("SELECT COUNT(*) n FROM ranks WHERE as_of = ?")
+  let have = await env.DB.prepare("SELECT COUNT(*) n FROM ranks WHERE as_of = ?")
     .bind(d.as_of).first("n");
+  if (have) {
+    // Self-heal when a stored day was recomputed (e.g. a methodology change
+    // republished the same as_of): probe one symbol's score and re-ingest on
+    // mismatch. Values compare exactly — both sides are the same 4-dp rounds.
+    const c = d._col, probe = d.rows[0];
+    const row = await env.DB.prepare(
+      "SELECT final_score f, rank_1500 r FROM ranks WHERE as_of = ? AND symbol = ?"
+    ).bind(d.as_of, probe[c.symbol]).first();
+    if (!row || row.f !== probe[c.final_score] || row.r !== probe[c.rank_1500]) {
+      await env.DB.prepare("DELETE FROM ranks WHERE as_of = ?").bind(d.as_of).run();
+      have = 0;
+    }
+  }
   if (!have) {
     const c = d._col;
     const stmts = [];
