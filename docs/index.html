@@ -1275,15 +1275,43 @@ document.getElementById("wseg").addEventListener("click", e => {
 });
 
 /* ---------- auto-build watchlist ---------- */
-const AB = {univ: "all", n: 10, sector: "", vol: 0, mcap: 0, cap: 0, mode: "replace"};
+const AB = {univ: "all", n: 10, sector: "", vol: 0, mcap: 0, cap: 0, corr: 0, mode: "replace"};
 const ABOPTS = [
   ["univ", "Universe", [["all", "All 1500"], ["sp500", "S&P 500"], ["sp400", "Mid 400"], ["sp600", "Small 600"]]],
   ["n", "How many stocks", [[5, "5"], [10, "10"], [15, "15"], [20, "20"]]],
   ["vol", "Max volatility (12M)", [[0, "Any"], [0.4, "≤40%"], [0.6, "≤60%"]]],
   ["mcap", "Min market cap", [[0, "Any"], [2e9, "$2B+"], [10e9, "$10B+"], [50e9, "$50B+"]]],
   ["cap", "Max per sector", [[0, "Any"], [1, "1"], [2, "2"], [3, "3"]]],
+  ["corr", "Max pairwise correlation", [[0, "Any"], [0.8, "≤0.80"], [0.65, "≤0.65"], [0.5, "≤0.50"]]],
   ["mode", "Fill mode", [["replace", "Replace list"], ["add", "Add to list"]]],
 ];
+
+// Daily log-return map per symbol (session-cached), for correlation gating.
+const RETS = {};
+async function retSeries(sym) {
+  if (RETS[sym]) return RETS[sym];
+  const d = await fetchPrices(sym);
+  const m = {};
+  const from = Math.max(1, d.close.length - 140);
+  for (let j = from; j < d.close.length; j++)
+    m[d.dates[j]] = Math.log(d.close[j] / d.close[j - 1]);
+  RETS[sym] = m;
+  return m;
+}
+function corrOf(a, b) {
+  const dates = Object.keys(a).filter(dt => dt in b);
+  if (dates.length < 40) return null;
+  const n = dates.length;
+  let ma = 0, mb = 0;
+  for (const dt of dates) { ma += a[dt]; mb += b[dt]; }
+  ma /= n; mb /= n;
+  let sab = 0, sa = 0, sb = 0;
+  for (const dt of dates) {
+    const xa = a[dt] - ma, xb = b[dt] - mb;
+    sab += xa * xb; sa += xa * xa; sb += xb * xb;
+  }
+  return sa && sb ? sab / Math.sqrt(sa * sb) : null;
+}
 
 function buildAB() {
   const body = document.getElementById("abbody");
@@ -1295,41 +1323,70 @@ function buildAB() {
       "</div></div>").join("") +
     '<div class="abrow"><span class="lbl">Sector</span><select id="absector"><option value="">Any sector</option>' +
     secs.map(s => '<option' + (AB.sector === s ? " selected" : "") + ">" + esc(s) + "</option>").join("") + "</select></div>" +
-    '<div class="abrow"><span class="lbl" style="font-size:.76rem;color:var(--text-3)">Picks the best-ranked stocks that pass every filter, in rank order.</span></div>' +
+    '<div class="abrow"><span class="lbl" style="font-size:.76rem;color:var(--text-3)">Greedy fill: walks the rankings best-first, admitting each stock only if it passes every filter — including staying under the correlation cap against everything already on the list (measured on ~6 months of daily returns).</span></div>' +
     '<button class="abbtn" id="abrun">Run</button><div id="abpreview"></div>';
   body.querySelectorAll(".seg[data-k]").forEach(seg => seg.addEventListener("click", e => {
     const b = e.target.closest("button"); if (!b) return;
     const k = seg.dataset.k, v = b.dataset.v;
-    AB[k] = (k === "n" || k === "vol" || k === "mcap" || k === "cap") ? +v : v;
+    AB[k] = (k === "mode" || k === "univ") ? v : +v;
     for (const x of seg.querySelectorAll("button")) x.classList.toggle("active", x === b);
   }));
   document.getElementById("absector").addEventListener("change", e => { AB.sector = e.target.value; });
   document.getElementById("abrun").addEventListener("click", runAB);
 }
 
-function runAB() {
+async function runAB() {
+  const btn = document.getElementById("abrun");
+  const pv = document.getElementById("abpreview");
+  btn.disabled = true;
   const picks = [];
   const perSector = {};
-  for (const r of DATA.rows) {
-    if (picks.length >= AB.n) break;
-    const sym = r[IDX.symbol];
-    if (AB.mode === "add" && WATCH.has(sym)) continue;
-    if (AB.univ !== "all" && r[IDX.index] !== AB.univ) continue;
-    if (AB.sector && r[IDX.sector] !== AB.sector) continue;
-    if (AB.vol && (r[IDX.volatility_12m] || 99) > AB.vol) continue;
-    if (AB.mcap && (r[IDX.market_cap] || 0) < AB.mcap) continue;
-    const sec = r[IDX.sector] || "?";
-    if (AB.cap && (perSector[sec] || 0) >= AB.cap) continue;
-    perSector[sec] = (perSector[sec] || 0) + 1;
-    picks.push(r);
-  }
-  const pv = document.getElementById("abpreview");
+  const skipped = [];
+  // Greedy correlation gate: a candidate must not correlate above the cap
+  // with anything already admitted (including the current list in add mode).
+  const admitted = AB.mode === "add" ? [...WATCH] : [];
+  let checked = 0;
+  try {
+    for (const r of DATA.rows) {
+      if (picks.length >= AB.n) break;
+      const sym = r[IDX.symbol];
+      if (AB.mode === "add" && WATCH.has(sym)) continue;
+      if (AB.univ !== "all" && r[IDX.index] !== AB.univ) continue;
+      if (AB.sector && r[IDX.sector] !== AB.sector) continue;
+      if (AB.vol && (r[IDX.volatility_12m] || 99) > AB.vol) continue;
+      if (AB.mcap && (r[IDX.market_cap] || 0) < AB.mcap) continue;
+      const sec = r[IDX.sector] || "?";
+      if (AB.cap && (perSector[sec] || 0) >= AB.cap) continue;
+      if (AB.corr && admitted.length) {
+        if (++checked > 200) break; // hard cap on price-history fetches
+        pv.innerHTML = '<div class="chart-note" style="padding:8px 16px">Checking correlations&hellip; ' +
+          picks.length + " picked, " + checked + " examined</div>";
+        let worst = null;
+        try {
+          const cand = await retSeries(sym);
+          for (const a of admitted) {
+            const c = corrOf(cand, await retSeries(a).catch(() => ({})));
+            if (c != null && c > AB.corr && (!worst || c > worst.c)) worst = {s: a, c};
+          }
+        } catch (e) { /* no price data for candidate: let it through */ }
+        if (worst) { skipped.push(sym + " (" + worst.c.toFixed(2) + " vs " + worst.s + ")"); continue; }
+      }
+      perSector[sec] = (perSector[sec] || 0) + 1;
+      picks.push(r);
+      admitted.push(sym);
+    }
+  } finally { btn.disabled = false; }
   if (!picks.length) {
     pv.innerHTML = '<div class="chart-note" style="padding:8px 16px">No stocks pass those filters — loosen something and run again.</div>';
     return;
   }
   pv.innerHTML =
-    '<div class="sec-label">Result · ' + picks.length + " stocks</div>" +
+    '<div class="sec-label">Result · ' + picks.length + " stocks" +
+    (picks.length < AB.n ? " (fewer than requested passed the filters)" : "") + "</div>" +
+    (skipped.length
+      ? '<div class="chart-note" style="padding:0 16px 6px">Skipped as too correlated: ' +
+        esc(skipped.slice(0, 8).join(", ")) + (skipped.length > 8 ? " +" + (skipped.length - 8) + " more" : "") + "</div>"
+      : "") +
     picks.map(r =>
       '<div class="abprev"><div class="id"><div class="t">' + esc(r[IDX.symbol]) + '</div><div class="n">' + esc(r[IDX.name]) + "</div></div>" +
       '<span class="m">#' + r[IDX.rank_1500] + " · vol " + Math.round((r[IDX.volatility_12m] || 0) * 100) + "%</span></div>").join("") +
