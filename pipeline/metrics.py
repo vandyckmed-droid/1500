@@ -56,8 +56,8 @@ def compute_symbol_metrics(prices: pd.Series) -> dict | None:
         "date_1m_ago": p.index[-1 - MONTH].strftime("%Y-%m-%d"),
     }
 
-    # 6-month metrics
-    idx_6 = -1 - HALF_YEAR if n > HALF_YEAR else 0
+    # 6-month metrics (guard above guarantees n > HALF_YEAR + MONTH)
+    idx_6 = -1 - HALF_YEAR
     p_6m = float(p.iloc[idx_6])
     out["price_6m_ago"] = round(p_6m, 4)
     out["date_6m_ago"] = p.index[idx_6].strftime("%Y-%m-%d")

@@ -376,8 +376,7 @@ def detect_keyed_provider(api_key: str, start: date, end: date) -> Provider | No
         if name in by_name:
             log.info("using cached provider: %s", name)
             return by_name[name](api_key)
-        if name == "none":
-            return None
+        # a stale "none" (or unknown) entry is ignored so detection re-runs
 
     if not api_key:
         return None
@@ -395,9 +394,9 @@ def detect_keyed_provider(api_key: str, start: date, end: date) -> Provider | No
             cache.write_text(json.dumps({"provider": cls.name}))
             return provider
 
+    # Deliberately not cached: a transient failure (network blip, 429s) must
+    # not permanently disable the keyed provider — re-detect next run.
     log.warning("API key did not match any supported provider; using keyless fallbacks")
-    cache.parent.mkdir(parents=True, exist_ok=True)
-    cache.write_text(json.dumps({"provider": "none"}))
     return None
 
 
