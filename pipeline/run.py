@@ -89,7 +89,17 @@ def main(argv: list[str] | None = None) -> int:
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(payload, separators=(",", ":")))
+    blob = json.dumps(payload, separators=(",", ":"))
+    out.write_text(blob)
+
+    # Daily snapshot archive: one file per as-of date plus a date index, so the
+    # site can later show how rankings evolved. Re-runs on the same date just
+    # overwrite that day's snapshot.
+    hist_dir = out.parent / "history"
+    hist_dir.mkdir(exist_ok=True)
+    (hist_dir / f"{as_of}.json").write_text(blob)
+    dates = sorted(p.stem for p in hist_dir.glob("*.json") if p.stem != "index")
+    (hist_dir / "index.json").write_text(json.dumps({"dates": dates}))
     log.info(
         "wrote %s: %d ranked, %d excluded, as of %s",
         out,
