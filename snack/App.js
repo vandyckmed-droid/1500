@@ -15,6 +15,9 @@ const DATA_URL = API_BASE + '/data/rankings.json';
 const TOP_URL = API_BASE + '/api/top?n=100';        // slim first paint (~20 KB)
 const SEARCH_URL = (q) => API_BASE + '/api/search?q=' + encodeURIComponent(q) + '&n=50';
 const QUOTE_URL = (s) => API_BASE + '/api/quote/' + encodeURIComponent(s);
+const ANALYZE_URL = (s) => API_BASE + '/api/analyze/' + encodeURIComponent(s);
+const REVIEW_URL = API_BASE + '/api/review';
+const ASK_URL = API_BASE + '/api/ask';
 const PRICE_URL = (s) => 'https://raw.githubusercontent.com/vandyckmed-droid/1500/data/' + s.replace('.', '_') + '.json';
 const LOGO_URL = (s) => 'https://images.financialmodelingprep.com/symbol/' + s.replace('.', '-') + '.png';
 
@@ -242,9 +245,11 @@ function explainFor(g, key, asOf) {
 function StockSheet({ row, IDX, DATA, watch, onToggleWatch, onClose }) {
   const [explain, setExplain] = useState(null);
   const [quote, setQuote] = useState(null);
+  const [ai, setAi] = useState(null);
+  const [aiBusy, setAiBusy] = useState(false);
   const sym = row ? row[IDX.symbol] : null;
   useEffect(() => {
-    setQuote(null);
+    setQuote(null); setAi(null); setAiBusy(false);
     if (!sym) return;
     let live = true;
     fetch(QUOTE_URL(sym)).then((r) => (r.ok ? r.json() : null))
@@ -323,10 +328,36 @@ function StockSheet({ row, IDX, DATA, watch, onToggleWatch, onClose }) {
           ]} />
           {ex && ['v12', 'v6', 'mcapx'].includes(explain) && <ExplainBox ex={ex} />}
 
+          <Text style={st.secLabel}>AI analysis</Text>
+          <AIBox busy={aiBusy} text={ai} label="Explain this ranking" onRun={() => {
+            setAiBusy(true);
+            fetch(ANALYZE_URL(sym)).then((r) => r.json())
+              .then((d) => setAi(d.analysis || 'Analysis unavailable right now — try again in a minute.'))
+              .catch(() => setAi('Analysis unavailable right now — try again in a minute.'))
+              .finally(() => setAiBusy(false));
+          }} />
+
           <Text style={[st.dim, { padding: 16, fontSize: 12 }]}>Tap any number to see exactly how it was calculated.</Text>
         </ScrollView>
       </View>
     </Modal>
+  );
+}
+
+// ---------------- AI (Workers AI via the app's own API) ----------------
+function AIBox({ busy, text, onRun, label }) {
+  if (text) {
+    return (
+      <View style={st.aiBox}>
+        <Text style={st.aiText}>{text}</Text>
+        <Text style={st.aiFoot}>AI-generated from the app's data · not investment advice</Text>
+      </View>
+    );
+  }
+  return (
+    <Pressable onPress={() => { tap('medium'); onRun(); }} disabled={busy} style={st.aiBtn}>
+      {busy ? <ActivityIndicator color={C.text2} /> : <Text style={st.aiBtnT}>✦  {label}</Text>}
+    </Pressable>
   );
 }
 
@@ -350,6 +381,23 @@ export default function App() {
   const [watch, setWatch] = useState(new Set());
   const [openSym, setOpenSym] = useState(null);
   const [searchRows, setSearchRows] = useState(null);
+  const [revText, setRevText] = useState(null);
+  const [revBusy, setRevBusy] = useState(false);
+  const [askQ, setAskQ] = useState('');
+  const [askAns, setAskAns] = useState(null);
+  const [askBusy, setAskBusy] = useState(false);
+
+  useEffect(() => { setRevText(null); }, [watch]);
+
+  const runAsk = () => {
+    const q = askQ.trim();
+    if (!q || askBusy) return;
+    tap('medium'); setAskBusy(true); setAskAns(null);
+    fetch(ASK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q }) })
+      .then((r) => r.json()).then((d) => setAskAns(d.answer || 'No answer right now — try again in a minute.'))
+      .catch(() => setAskAns('No answer right now — try again in a minute.'))
+      .finally(() => setAskBusy(false));
+  };
 
   // While only the slim top-100 is loaded, search the API instead of the
   // partial list; once the full dataset lands this is bypassed entirely.
@@ -478,6 +526,21 @@ export default function App() {
           <Text style={st.aboutP}>All S&amp;P 1500 stocks (S&amp;P 500 + MidCap 400 + SmallCap 600), ranked by risk-adjusted momentum — best first. Updated automatically every trading night.</Text>
           <Text style={st.aboutH}>How the numbers work</Text>
           <Text style={st.aboutP}>12-1 / 6-1 return — the move over the past 12 or 6 months, skipping the most recent month.{'\n\n'}Volatility — how bumpy the ride was, from daily swings, annualized.{'\n\n'}VAR — return ÷ volatility: reward per unit of risk. Ranked by Avg VAR, the mean of the 12-1 and 6-1 VARs.</Text>
+          <Text style={st.aboutH}>Ask the AI</Text>
+          <View style={[st.searchBox, { marginBottom: 8 }]}>
+            <TextInput value={askQ} onChangeText={setAskQ} placeholder="e.g. Which sector leads and why?" placeholderTextColor={C.text3}
+              style={{ color: C.text, fontSize: 14, paddingVertical: 8, flex: 1 }} autoCorrect={false}
+              returnKeyType="send" onSubmitEditing={runAsk} />
+            <Pressable onPress={runAsk} hitSlop={8} disabled={askBusy}>
+              {askBusy ? <ActivityIndicator color={C.text3} size="small" /> : <Text style={{ color: C.brandHi, fontWeight: '700', fontSize: 14 }}>Ask</Text>}
+            </Pressable>
+          </View>
+          {!!askAns && (
+            <View style={[st.aiBox, { marginHorizontal: 0 }]}>
+              <Text style={st.aiText}>{askAns}</Text>
+              <Text style={st.aiFoot}>AI-generated from the app's data · not investment advice</Text>
+            </View>
+          )}
           <Text style={st.aboutH}>Fine print</Text>
           <Text style={st.aboutP}>Research use only — not investment advice. Data may contain errors.</Text>
         </ScrollView>
@@ -508,6 +571,15 @@ export default function App() {
           <Text style={[st.dim, { padding: 40, textAlign: 'center' }]}>Nothing here yet.{'\n'}Tap the star on any stock to add it.</Text>
         ) : (
           <FlatList
+            ListHeaderComponent={view === 'watch' && !query ? (
+              <AIBox busy={revBusy} text={revText} label="Review my watchlist" onRun={() => {
+                setRevBusy(true);
+                fetch(REVIEW_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: [...watch] }) })
+                  .then((r) => r.json()).then((d) => setRevText(d.analysis || 'Review unavailable right now — try again in a minute.'))
+                  .catch(() => setRevText('Review unavailable right now — try again in a minute.'))
+                  .finally(() => setRevBusy(false));
+              }} />
+            ) : null}
             data={rows}
             keyExtractor={(r) => r[IDX.symbol]}
             renderItem={renderRow}
@@ -585,4 +657,15 @@ const st = StyleSheet.create({
   aboutH: { color: C.text, fontWeight: '700', fontSize: 15, marginTop: 18, marginBottom: 6 },
   aboutP: { color: C.text2, fontSize: 13.5, lineHeight: 20 },
   dim: { color: C.text3, fontSize: 13.5 },
+  aiBtn: {
+    marginHorizontal: 16, marginVertical: 6, paddingVertical: 13, alignItems: 'center',
+    backgroundColor: C.surface, borderWidth: 1, borderColor: C.hairline, borderRadius: 12, minHeight: 46,
+  },
+  aiBtnT: { color: C.text, fontWeight: '700', fontSize: 14 },
+  aiBox: {
+    marginHorizontal: 16, marginVertical: 6, padding: 14, backgroundColor: C.surface,
+    borderLeftWidth: 3, borderLeftColor: C.gold, borderRadius: 12,
+  },
+  aiText: { color: C.text, fontSize: 13.5, lineHeight: 20 },
+  aiFoot: { color: C.text3, fontSize: 10.5, marginTop: 9 },
 });

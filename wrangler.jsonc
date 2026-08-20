@@ -11,5 +11,8 @@
     "directory": "./docs",
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash"
+  },
+  "ai": {
+    "binding": "AI"
   }
 }
