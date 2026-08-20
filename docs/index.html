@@ -275,6 +275,23 @@
     border-radius: 8px; color: var(--text); font-variant-numeric: tabular-nums; font-size: .84rem;
   }
 
+  /* ---------- AI ---------- */
+  .aibtn {
+    display: block; width: calc(100% - 32px); margin: 0 16px; padding: 12px; min-height: 44px;
+    background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px;
+    color: var(--text); font: 700 .88rem inherit; cursor: pointer;
+  }
+  .aibtn:disabled { color: var(--text-3); }
+  .aibox {
+    margin: 0 16px; padding: 13px 14px; background: var(--surface);
+    border: 1px solid var(--hairline); border-left: 3px solid #e7a93c;
+    border-radius: 12px; font-size: .86rem; color: var(--text); line-height: 1.5;
+  }
+  .aifoot { color: var(--text-3); font-size: .68rem; margin-top: 9px; }
+  #aireview { margin: 10px 0 2px; }
+  #aireview[hidden] { display: none; }
+  .about-body .aibtn, .about-body .aibox { width: 100%; margin: 0; }
+
   /* ---------- about screen ---------- */
   #about .navbar .title { padding-right: 0; margin: 0 auto; }
   .about-body { padding: 16px; color: var(--text-2); font-size: .88rem; }
@@ -335,6 +352,7 @@
       <div class="colhead"><span class="l" id="modelabel">VAR — reward per risk</span><span class="m" id="col1">12M</span><span class="m" id="col2">6M</span><span class="sp"></span></div>
     </div>
     <div id="status">Loading&hellip;</div>
+    <div id="aireview" hidden></div>
     <div class="list" id="list"></div>
     <button class="more" id="more" hidden>Show more</button>
   </div>
@@ -364,6 +382,12 @@
         <button data-theme="rh">Robinhood</button>
         <button data-theme="fid">Fidelity</button>
       </div>
+      <h3>Ask the AI</h3>
+      <label class="search" style="margin:4px 0 8px">
+        <input id="askin" type="text" placeholder="e.g. Which sector leads and why?" autocomplete="off">
+      </label>
+      <button class="aibtn" id="askbtn">Ask</button>
+      <div id="askout" style="margin-top:10px"></div>
       <h3>Fine print</h3>
       <p>Research use only — not investment advice. Data may contain errors.</p>
     </div>
@@ -411,10 +435,17 @@ const MODES = {
 const PAGE = 80;
 const INDEX_NAME = {sp500: "S&P 500", sp400: "S&P MidCap 400", sp600: "S&P SmallCap 600"};
 const LOGO = s => "https://images.financialmodelingprep.com/symbol/" + encodeURIComponent(s.replace(".", "-")) + ".png";
+// Quotes and AI are served by the Cloudflare Worker; on the GitHub Pages
+// mirror the API lives cross-origin (the Worker sends open CORS headers).
+const API = location.hostname.endsWith("workers.dev") ? "" : "https://1500.vandyck-med.workers.dev";
 
 let DATA = null, IDX = {}, BYSYM = {}, view = "all", mode = "voladj", query = "", shown = 0, current = [];
 const WATCH = new Set((() => { try { return JSON.parse(localStorage.getItem("watch") || "[]"); } catch (e) { return []; } })());
-function saveWatch() { try { localStorage.setItem("watch", JSON.stringify([...WATCH])); } catch (e) {} }
+function saveWatch() {
+  try { localStorage.setItem("watch", JSON.stringify([...WATCH])); } catch (e) {}
+  const rev = document.getElementById("aireview");
+  if (rev) { rev.dataset.ready = ""; rev.innerHTML = ""; }
+}
 
 // theme boot (before first paint of content)
 const THEME_COLORS = {"": "#000000", rh: "#0d1015", fid: "#f2f4f6"};
@@ -433,22 +464,47 @@ document.getElementById("themeseg").addEventListener("click", e => {
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 
-fetch("data/rankings.json", {cache: "no-store"}).then(r => {
-  if (!r.ok) throw new Error("HTTP " + r.status);
-  return r.json();
-}).then(d => {
-  DATA = d;
-  d.columns.forEach((c, i) => IDX[c] = i);
-  d.rows.forEach(r => BYSYM[r[IDX.symbol]] = r);
-  document.getElementById("asof").textContent = d.as_of;
-  document.getElementById("status").hidden = true;
-  renderAbout();
-  renderSectors();
-  refresh();
-  route();
-}).catch(e => {
-  document.getElementById("status").textContent = "Failed to load: " + e.message;
+let lastFetch = 0;
+function loadData(first) {
+  lastFetch = Date.now();
+  fetch("data/rankings.json", {cache: "no-store"}).then(r => {
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  }).then(d => {
+    DATA = d; IDX = {}; BYSYM = {};
+    d.columns.forEach((c, i) => IDX[c] = i);
+    d.rows.forEach(r => BYSYM[r[IDX.symbol]] = r);
+    document.getElementById("asof").textContent = d.as_of;
+    document.getElementById("status").hidden = true;
+    renderAbout();
+    renderSectors();
+    refresh();
+    if (first) route();
+  }).catch(e => {
+    if (first) document.getElementById("status").textContent = "Failed to load: " + e.message;
+  });
+}
+loadData(true);
+// Icon-launched PWAs resume from background; refetch when shown again (≤ every 5 min).
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && DATA && Date.now() - lastFetch > 5 * 60 * 1000) loadData(false);
 });
+
+/* ---------- AI (Workers AI via the app's own API) ---------- */
+function aiButton(container, label, getText) {
+  container.innerHTML = '<button class="aibtn">✦  ' + esc(label) + "</button>";
+  const btn = container.querySelector(".aibtn");
+  btn.onclick = () => {
+    btn.disabled = true; btn.textContent = "Thinking…";
+    getText().then(t => {
+      container.innerHTML = '<div class="aibox">' + esc(t) +
+        '<div class="aifoot">AI-generated from the app’s data · not investment advice</div></div>';
+    }).catch(() => {
+      btn.disabled = false; btn.textContent = "Unavailable — tap to retry";
+    });
+  };
+}
+const aiJson = (url, opts) => fetch(url, opts).then(r => r.json());
 
 /* ---------- helpers ---------- */
 function esc(s) {
@@ -576,6 +632,18 @@ function render(reset) {
     list.innerHTML = '<div class="chart-note" style="padding:28px 16px;text-align:center">Nothing here yet. Open a stock and tap the ☆ to add it to your watchlist.</div>';
   }
   document.getElementById("more").hidden = shown >= current.length;
+  const rev = document.getElementById("aireview");
+  if (view === "watch" && current.length && !query) {
+    rev.hidden = false;
+    if (!rev.dataset.ready) {
+      rev.dataset.ready = "1";
+      aiButton(rev, "Review my watchlist", () =>
+        aiJson(API + "/api/review", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({symbols: [...WATCH]}),
+        }).then(d => { if (!d.analysis) throw 0; return d.analysis; }));
+    }
+  } else rev.hidden = true;
   document.getElementById("modelabel").textContent = cfg.label;
   const heads = cfg.heads || ["12M", "6M"];
   document.getElementById("col1").textContent = heads[0];
@@ -784,9 +852,26 @@ function showStock(sym) {
     section("VAR — volatility-adjusted return", vars) +
     section("Return (skips latest month)", rets) +
     section("Volatility (annualized)", vols) +
+    section("About the company", '<div id="aico"></div>') +
     '<div class="explain" id="explain" hidden></div>';
 
+  body.dataset.sym = sym;
   body.querySelector(".sheader").prepend(logoEl(sym, "logo"));
+  aiButton(document.getElementById("aico"), "What does this company do?", () =>
+    aiJson(API + "/api/analyze/" + encodeURIComponent(sym))
+      .then(d => { if (!d.analysis) throw 0; return d.analysis; }));
+  // Live intraday price (falls back silently to the EOD close on failure).
+  fetch(API + "/api/quote/" + encodeURIComponent(sym))
+    .then(r => (r.ok ? r.json() : null)).then(q => {
+      if (!q || q.price == null || body.dataset.sym !== sym) return;
+      const hp = body.querySelector(".hprice");
+      if (!hp) return;
+      hp.querySelector(".pv").textContent = "$" + q.price.toFixed(2);
+      const pd = hp.querySelector(".pd");
+      pd.textContent = (q.change_pct >= 0 ? "+" : "") + q.change_pct.toFixed(2) + "% today";
+      pd.style.color = q.change_pct >= 0 ? "var(--up)" : "var(--down)";
+      pd.style.fontWeight = "600";
+    }).catch(() => {});
   body.onclick = (e => {
     const c = e.target.closest("[data-key]"); if (!c) return;
     const ex = document.getElementById("explain");
@@ -878,6 +963,27 @@ const SECTOR_ICONS = {
   "Consumer Discretionary": {h: 300, d: '<path d="M6 8h12l-1.2 12H7.2L6 8z"/><path d="M9 8a3 3 0 0 1 6 0"/>'},
   "Consumer Staples": {h: 130, d: '<circle cx="9.5" cy="20" r="1"/><circle cx="16.5" cy="20" r="1"/><path d="M3 4h2l3 12h10l2-8H7"/>'},
 };
+
+/* ---------- ask the AI ---------- */
+const askbtn = document.getElementById("askbtn"), askin = document.getElementById("askin");
+function runAsk() {
+  const q = askin.value.trim();
+  if (!q || askbtn.disabled) return;
+  askbtn.disabled = true; askbtn.textContent = "Thinking…";
+  askin.blur();
+  aiJson(API + "/api/ask", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({question: q}),
+  }).then(d => {
+    document.getElementById("askout").innerHTML = d.answer
+      ? '<div class="aibox">' + esc(d.answer) + '<div class="aifoot">AI-generated from the app’s data · not investment advice</div></div>'
+      : '<div class="chart-note">No answer right now — try again in a minute.</div>';
+  }).catch(() => {
+    document.getElementById("askout").innerHTML = '<div class="chart-note">No answer right now — try again in a minute.</div>';
+  }).finally(() => { askbtn.disabled = false; askbtn.textContent = "Ask"; });
+}
+askbtn.addEventListener("click", runAsk);
+askin.addEventListener("keydown", e => { if (e.key === "Enter") runAsk(); });
 
 /* ---------- events ---------- */
 document.getElementById("tabbar").addEventListener("click", e => {
