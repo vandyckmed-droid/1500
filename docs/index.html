@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S&amp;P 1500 Momentum Rankings</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1a222c; --muted: #5c6a7a;
+    --border: #dde3ea; --accent: #1a56b0; --accent-soft: #e8f0fb;
+    --pos: #0d7a4f; --neg: #b3352e; --head-bg: #f0f3f7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12161c; --card: #1a2029; --text: #e6ebf1; --muted: #93a1b3;
+      --border: #2a3441; --accent: #6ea8f7; --accent-soft: #1e2c42;
+      --pos: #4cc38a; --neg: #ef8a80; --head-bg: #151b23;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 24px 16px 64px; }
+  header h1 { margin: 8px 0 4px; font-size: 1.7rem; }
+  header p.sub { margin: 0 0 16px; color: var(--muted); }
+  .meta { display: flex; flex-wrap: wrap; gap: 16px; margin: 12px 0 20px; font-size: .85rem; color: var(--muted); }
+  .meta b { color: var(--text); font-weight: 600; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+  .tabs button {
+    border: 1px solid var(--border); background: var(--card); color: var(--text);
+    padding: 8px 16px; border-radius: 999px; cursor: pointer; font-size: .9rem;
+  }
+  .tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+  .controls input {
+    border: 1px solid var(--border); background: var(--card); color: var(--text);
+    padding: 8px 12px; border-radius: 8px; font-size: .9rem; width: 240px; max-width: 100%;
+  }
+  .controls .count { color: var(--muted); font-size: .85rem; }
+  .tablebox { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 980px; font-size: .86rem; }
+  thead th {
+    position: sticky; top: 0; background: var(--head-bg); text-align: right;
+    padding: 10px 10px; border-bottom: 1px solid var(--border); cursor: pointer;
+    white-space: nowrap; user-select: none; font-weight: 600;
+  }
+  thead th.txt { text-align: left; }
+  thead th .arrow { color: var(--accent); }
+  tbody td { padding: 7px 10px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+  tbody td.txt { text-align: left; }
+  tbody tr:hover { background: var(--accent-soft); }
+  td.sym { font-weight: 600; }
+  td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+  .pos { color: var(--pos); } .neg { color: var(--neg); }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .72rem; background: var(--accent-soft); color: var(--accent); }
+  .pager { display: flex; gap: 8px; align-items: center; justify-content: center; padding: 14px; }
+  .pager button { border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  .pager button:disabled { opacity: .4; cursor: default; }
+  section.method { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; margin-top: 28px; }
+  section.method h2 { margin-top: 0; }
+  section.method code { background: var(--accent-soft); padding: 1px 6px; border-radius: 6px; font-size: .85em; }
+  section.method li { margin: 6px 0; }
+  .warn { color: var(--muted); font-size: .82rem; margin-top: 10px; }
+  #status { padding: 40px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>S&amp;P 1500 Momentum Rankings</h1>
+    <p class="sub">Risk-adjusted momentum scores for the S&amp;P Composite 1500, updated automatically.</p>
+  </header>
+
+  <div class="meta" id="meta"></div>
+
+  <div class="tabs" id="tabs">
+    <button data-view="all" class="active">S&amp;P 1500</button>
+    <button data-view="sp500">S&amp;P 500</button>
+    <button data-view="sp400">S&amp;P MidCap 400</button>
+    <button data-view="sp600">S&amp;P SmallCap 600</button>
+  </div>
+
+  <div class="controls">
+    <input id="search" type="search" placeholder="Filter by symbol, name, sector&hellip;">
+    <span class="count" id="count"></span>
+  </div>
+
+  <div class="tablebox">
+    <div id="status">Loading rankings&hellip;</div>
+    <table id="tbl" hidden>
+      <thead><tr id="headrow"></tr></thead>
+      <tbody id="body"></tbody>
+    </table>
+    <div class="pager" id="pager" hidden>
+      <button id="prev">&larr; Prev</button>
+      <span id="pageinfo"></span>
+      <button id="next">Next &rarr;</button>
+    </div>
+  </div>
+
+  <section class="method">
+    <h2>Methodology</h2>
+    <ul>
+      <li><b>Universe</b> — current constituents of the S&amp;P 500, S&amp;P MidCap 400 and S&amp;P SmallCap 600 (together the S&amp;P Composite 1500), taken from the Wikipedia constituent lists.</li>
+      <li><b>Prices</b> — daily dividend- and split-adjusted closes, roughly 13 months of history per security.</li>
+      <li><b>12&#8209;1 month return</b> — price 21 trading days ago divided by price 252 trading days ago, minus 1. The most recent month is excluded, following the standard momentum construction.</li>
+      <li><b>6&#8209;1 month return</b> — price 21 trading days ago divided by price 126 trading days ago, minus 1.</li>
+      <li><b>Volatility</b> — sample standard deviation of daily adjusted returns over the trailing 252 (12m) or 126 (6m) trading days, annualized: <code>&sigma;<sub>ann</sub> = std(daily returns) &times; &radic;252</code>.</li>
+      <li><b>Scores</b> — <code>score_12 = return_12_1 / volatility_12m</code>, <code>score_6 = return_6_1 / volatility_6m</code>, and the primary ranking metric <code>final_score = 0.50 &times; score_12 + 0.50 &times; score_6</code>. An alternative blend is retained: <code>alt_score = ((return_12_1 + return_6_1)/2) / ((volatility_12m + volatility_6m)/2)</code>.</li>
+      <li><b>Ranks</b> — rank 1 is the highest <code>final_score</code>. Securities are ranked within their own index and across the full S&amp;P 1500. Securities without a complete 12-month history (recent IPOs, new index members) are excluded and listed in the data file.</li>
+    </ul>
+    <p class="warn">This page is generated for research purposes only and is not investment advice. Data may contain errors and is provided as-is.</p>
+  </section>
+</div>
+
+<script>
+"use strict";
+const NUMCOLS = {
+  last_price: {label: "Price", fmt: v => "$" + v.toFixed(2)},
+  return_12_1: {label: "Ret 12-1", fmt: pct, sign: true},
+  return_6_1: {label: "Ret 6-1", fmt: pct, sign: true},
+  volatility_12m: {label: "Vol 12m", fmt: pct},
+  volatility_6m: {label: "Vol 6m", fmt: pct},
+  score_12: {label: "Score 12", fmt: num, sign: true},
+  score_6: {label: "Score 6", fmt: num, sign: true},
+  final_score: {label: "Final Score", fmt: num, sign: true},
+  alternative_score: {label: "Alt Score", fmt: num, sign: true},
+};
+const PAGE = 100;
+let DATA = null, COLIDX = {}, view = "all", query = "", page = 0;
+let sortKey = "final_score", sortDir = -1;
+
+function pct(v) { return (v * 100).toFixed(1) + "%"; }
+function num(v) { return v.toFixed(3); }
+
+const INDEX_BADGE = {sp500: "500", sp400: "400", sp600: "600"};
+
+fetch("data/rankings.json").then(r => {
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}).then(d => {
+  DATA = d;
+  d.columns.forEach((c, i) => COLIDX[c] = i);
+  renderMeta(); buildHead(); render();
+  document.getElementById("tbl").hidden = false;
+  document.getElementById("pager").hidden = false;
+  document.getElementById("status").style.display = "none";
+}).catch(e => {
+  document.getElementById("status").textContent = "Failed to load rankings: " + e.message;
+});
+
+function renderMeta() {
+  const c = DATA.constituent_counts, rc = DATA.ranked_counts;
+  const srcs = Object.entries(DATA.data_sources || {}).map(([k, v]) => k + " (" + v + ")").join(", ");
+  document.getElementById("meta").innerHTML =
+    "<span>Prices as of <b>" + DATA.as_of + "</b></span>" +
+    "<span>Generated <b>" + DATA.generated_at.replace("T", " ").replace("Z", " UTC") + "</b></span>" +
+    "<span>Ranked <b>" + DATA.rows.length + "</b> of " + (c.sp500 + c.sp400 + c.sp600) + " constituents</span>" +
+    (srcs ? "<span>Data: <b>" + srcs + "</b></span>" : "");
+}
+
+function headCells() {
+  const cells = [
+    {key: "rank", label: view === "all" ? "Rank" : "Rank", txt: false},
+    {key: "symbol", label: "Symbol", txt: true},
+    {key: "name", label: "Company", txt: true},
+    {key: "sector", label: "Sector", txt: true},
+  ];
+  if (view === "all") cells.push({key: "index", label: "Index", txt: true});
+  for (const k of Object.keys(NUMCOLS)) cells.push({key: k, label: NUMCOLS[k].label, txt: false});
+  if (view !== "all") cells.push({key: "rank_1500", label: "Rank 1500", txt: false});
+  return cells;
+}
+
+function buildHead() {
+  const tr = document.getElementById("headrow");
+  tr.innerHTML = "";
+  for (const c of headCells()) {
+    const th = document.createElement("th");
+    th.className = c.txt ? "txt" : "";
+    th.innerHTML = c.label + (sortCol() === c.key ? ' <span class="arrow">' + (sortDir < 0 ? "&darr;" : "&uarr;") + "</span>" : "");
+    th.onclick = () => {
+      const k = c.key === "rank" ? "final_score" : c.key;
+      if (sortKey === k) sortDir = -sortDir;
+      else { sortKey = k; sortDir = ["symbol", "name", "sector", "index"].includes(k) ? 1 : -1; }
+      page = 0; buildHead(); render();
+    };
+    tr.appendChild(th);
+  }
+}
+function sortCol() { return sortKey === "final_score" ? "rank" : sortKey; }
+
+function rows() {
+  let rs = DATA.rows;
+  if (view !== "all") rs = rs.filter(r => r[COLIDX.index] === view);
+  if (query) {
+    const q = query.toLowerCase();
+    rs = rs.filter(r =>
+      String(r[COLIDX.symbol]).toLowerCase().includes(q) ||
+      String(r[COLIDX.name]).toLowerCase().includes(q) ||
+      String(r[COLIDX.sector]).toLowerCase().includes(q));
+  }
+  const k = sortKey, i = COLIDX[k];
+  rs = rs.slice().sort((a, b) => {
+    const av = a[i], bv = b[i];
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === "string") return sortDir * av.localeCompare(bv);
+    return sortDir * (av - bv);
+  });
+  return rs;
+}
+
+function render() {
+  const rs = rows();
+  const pages = Math.max(1, Math.ceil(rs.length / PAGE));
+  page = Math.min(page, pages - 1);
+  const slice = rs.slice(page * PAGE, (page + 1) * PAGE);
+  const tb = document.getElementById("body");
+  const frag = document.createDocumentFragment();
+  for (const r of slice) {
+    const tr = document.createElement("tr");
+    const rank = view === "all" ? r[COLIDX.rank_1500] : r[COLIDX.rank_index];
+    let html = "<td>" + rank + "</td>" +
+      '<td class="txt sym">' + esc(r[COLIDX.symbol]) + "</td>" +
+      '<td class="txt name" title="' + esc(r[COLIDX.name]) + '">' + esc(r[COLIDX.name]) + "</td>" +
+      '<td class="txt">' + esc(r[COLIDX.sector]) + "</td>";
+    if (view === "all") html += '<td class="txt"><span class="badge">' + INDEX_BADGE[r[COLIDX.index]] + "</span></td>";
+    for (const k of Object.keys(NUMCOLS)) {
+      const v = r[COLIDX[k]], cfg = NUMCOLS[k];
+      if (v == null) { html += "<td>&mdash;</td>"; continue; }
+      const cls = cfg.sign ? (v >= 0 ? "pos" : "neg") : "";
+      html += '<td class="' + cls + '">' + cfg.fmt(v) + "</td>";
+    }
+    if (view !== "all") html += "<td>" + r[COLIDX.rank_1500] + "</td>";
+    tr.innerHTML = html;
+    frag.appendChild(tr);
+  }
+  tb.innerHTML = "";
+  tb.appendChild(frag);
+  document.getElementById("count").textContent = rs.length + " securities";
+  document.getElementById("pageinfo").textContent = "Page " + (page + 1) + " / " + pages;
+  document.getElementById("prev").disabled = page === 0;
+  document.getElementById("next").disabled = page >= pages - 1;
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+}
+
+document.getElementById("tabs").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  view = b.dataset.view;
+  for (const x of document.querySelectorAll(".tabs button")) x.classList.toggle("active", x === b);
+  page = 0; buildHead(); render();
+});
+document.getElementById("search").addEventListener("input", e => { query = e.target.value.trim(); page = 0; render(); });
+document.getElementById("prev").onclick = () => { page--; render(); };
+document.getElementById("next").onclick = () => { page++; render(); };
+</script>
+</body>
+</html>
