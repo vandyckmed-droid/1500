@@ -222,12 +222,12 @@
           <input id="search" type="search" placeholder="Symbol or company" autocomplete="off">
         </label>
         <div class="seg" id="seg">
-          <button data-mode="voladj" class="active">Vol-Adj</button>
+          <button data-mode="voladj" class="active">VAR</button>
           <button data-mode="ret">Return</button>
           <button data-mode="vol">Vol</button>
         </div>
       </div>
-      <div class="colhead"><span class="l" id="modelabel">Vol-adjusted return</span><span class="m">12M</span><span class="m">6M</span></div>
+      <div class="colhead"><span class="l" id="modelabel">Volatility-adjusted return (VAR)</span><span class="m">12M</span><span class="m">6M</span></div>
     </div>
     <div id="status">Loading&hellip;</div>
     <div class="list" id="list"></div>
@@ -244,7 +244,7 @@
       <h3>How the numbers work</h3>
       <p><b>12-1 / 6-1 return</b> — how much the stock moved over the past 12 or 6 months, skipping the most recent month.</p>
       <p><b>Volatility</b> — how bumpy the ride was, from daily price swings, annualized.</p>
-      <p><b>Vol-adjusted return</b> — return divided by volatility: reward per unit of risk. The list is ordered by <code>0.5 &times; 12M + 0.5 &times; 6M</code> of these.</p>
+      <p><b>VAR (volatility-adjusted return)</b> — return divided by volatility: reward per unit of risk. The list is ordered by <b>Avg. VAR</b>, the average of the 12-1 and 6-1 VARs.</p>
       <h3>Fine print</h3>
       <p>Research use only — not investment advice. Data may contain errors.</p>
     </div>
@@ -279,7 +279,7 @@
 <script>
 "use strict";
 const MODES = {
-  voladj: {label: "Vol-adjusted return", cols: ["score_12", "score_6"], fmt: v => v.toFixed(2), signed: true},
+  voladj: {label: "Volatility-adjusted return (VAR)", cols: ["score_12", "score_6"], fmt: v => v.toFixed(2), signed: true},
   ret:    {label: "Return (12-1 / 6-1)", cols: ["return_12_1", "return_6_1"], fmt: v => (v > 0 ? "+" : "") + (v * 100).toFixed(0) + "%", signed: true},
   vol:    {label: "Annualized volatility", cols: ["volatility_12m", "volatility_6m"], fmt: v => (v * 100).toFixed(0) + "%", signed: false},
 };
@@ -386,7 +386,7 @@ function explainFor(g, key) {
     case "price":
       return "The latest closing price, from <b>" + day(g("last_date")) + "</b>. All prices here are adjusted for dividends and stock splits.";
     case "final":
-      return "The number every stock is ranked by: the average of the two vol-adjusted returns below." +
+      return "Average Volatility Adjusted Returns: the mean of VAR 12-1 and VAR 6-1 below. Every stock is ranked by this." +
         '<span class="math">(' + g("score_12").toFixed(2) + " + " + g("score_6").toFixed(2) + ") ÷ 2 = <b>" + g("final_score").toFixed(2) + "</b></span>";
     case "r12":
       return "How much the price moved from 12 months ago to 1 month ago. The most recent month is skipped on purpose — that's standard practice for momentum, because very recent jumps often reverse." +
@@ -401,10 +401,10 @@ function explainFor(g, key) {
       return "Same bumpiness measure over just the last 6 months." +
         '<span class="math">daily swings over 6 months × √252 = <b>' + (g("volatility_6m") * 100).toFixed(1) + "%</b></span>";
     case "s12":
-      return "Reward per unit of risk: the 12-1 return divided by the 12-month volatility. A big gain achieved smoothly scores higher than the same gain with wild swings." +
+      return "Volatility-adjusted return: the 12-1 return divided by the 12-month volatility. A big gain achieved smoothly scores higher than the same gain with wild swings." +
         '<span class="math">' + pct1(g("return_12_1")) + " ÷ " + (g("volatility_12m") * 100).toFixed(1) + "% = <b>" + g("score_12").toFixed(2) + "</b></span>";
     case "s6":
-      return "Same reward-per-risk idea over the 6-month window." +
+      return "Volatility-adjusted return for the shorter window: the 6-1 return divided by the 6-month volatility." +
         '<span class="math">' + pct1(g("return_6_1")) + " ÷ " + (g("volatility_6m") * 100).toFixed(1) + "% = <b>" + g("score_6").toFixed(2) + "</b></span>";
   }
   return "";
@@ -428,13 +428,13 @@ function showStock(sym) {
     '<div class="hint">Tap any number to see exactly how it was calculated.</div>' +
     '<div class="grid">' +
       card("Price", "$" + g("last_price").toFixed(2), "", "price") +
-      numCard("Momentum score", g("final_score"), true, "final") +
+      numCard("Avg. VAR", g("final_score"), true, "final") +
       pctCard("Return 12-1", g("return_12_1"), true, "r12") +
       pctCard("Return 6-1", g("return_6_1"), true, "r6") +
       pctCard("Volatility 12M", g("volatility_12m"), false, "v12") +
       pctCard("Volatility 6M", g("volatility_6m"), false, "v6") +
-      numCard("Vol-adj return 12M", g("score_12"), true, "s12") +
-      numCard("Vol-adj return 6M", g("score_6"), true, "s6") +
+      numCard("VAR 12-1", g("score_12"), true, "s12") +
+      numCard("VAR 6-1", g("score_6"), true, "s6") +
     "</div>" +
     '<div class="explain" id="explain" hidden></div>';
   body.querySelector(".sheader").prepend(logoEl(sym, "logo"));
