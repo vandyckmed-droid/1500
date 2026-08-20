@@ -67,7 +67,7 @@
     max-width: 520px; margin: 0 auto; height: 100%; height: 100dvh;
     display: flex; flex-direction: column;
   }
-  .content { flex: 1; position: relative; min-height: 0; }
+  .content { flex: 1; position: relative; min-height: 0; overflow: hidden; }
   .screen {
     position: absolute; inset: 0; overflow-y: auto;
     -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
@@ -144,7 +144,12 @@
   .mono.seco { color: var(--text); font-size: .85rem; }
   .id { flex: 1; min-width: 0; }
   .id .t { font-weight: 700; font-size: .95rem; letter-spacing: .01em; }
-  .id .wstar { color: #f5b93e; font-size: .75rem; vertical-align: 1px; }
+  .rstar {
+    flex: none; background: none; border: none; color: var(--text-3);
+    font-size: 1.15rem; line-height: 1; padding: 8px 0 8px 8px; margin-left: 2px;
+    cursor: pointer;
+  }
+  .rstar.on { color: #f5b93e; }
   .id .n { color: var(--text-2); font-size: .76rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chip {
     width: var(--chip-w); margin-left: 8px; flex: none;
@@ -521,10 +526,22 @@ function render(reset) {
     const sym = r[IDX.symbol];
     const el = document.createElement("div");
     el.className = "row";
+    const on = WATCH.has(sym);
     el.innerHTML =
-      '<div class="id"><div class="t">' + esc(sym) + (WATCH.has(sym) ? ' <span class="wstar">★</span>' : "") + '</div><div class="n">' + esc(r[IDX.name]) + "</div></div>" +
-      chip(r[IDX[cfg.cols[0]]], cfg) + chip(r[IDX[cfg.cols[1]]], cfg);
+      '<div class="id"><div class="t">' + esc(sym) + '</div><div class="n">' + esc(r[IDX.name]) + "</div></div>" +
+      chip(r[IDX[cfg.cols[0]]], cfg) + chip(r[IDX[cfg.cols[1]]], cfg) +
+      '<button class="rstar' + (on ? " on" : "") + '" aria-label="watchlist">' + (on ? "★" : "☆") + "</button>";
     el.prepend(logoEl(sym, "logo"));
+    el.querySelector(".rstar").addEventListener("click", e => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      const now = !WATCH.has(sym);
+      now ? WATCH.add(sym) : WATCH.delete(sym);
+      saveWatch();
+      btn.textContent = now ? "★" : "☆";
+      btn.classList.toggle("on", now);
+      if (view === "watch") render(true);
+    });
     el.addEventListener("click", () => { location.hash = "#/s/" + encodeURIComponent(sym); });
     frag.appendChild(el);
   }
