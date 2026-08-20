@@ -50,10 +50,17 @@ def compute_symbol_metrics(prices: pd.Series) -> dict | None:
         "last_price": round(last_price, 4),
         "last_date": p.index[-1].strftime("%Y-%m-%d"),
         "n_obs": n,
+        # anchor prices/dates so the site can show exactly how each number
+        # was computed
+        "price_1m_ago": round(p_1m, 4),
+        "date_1m_ago": p.index[-1 - MONTH].strftime("%Y-%m-%d"),
     }
 
     # 6-month metrics
-    p_6m = float(p.iloc[-1 - HALF_YEAR]) if n > HALF_YEAR else float(p.iloc[0])
+    idx_6 = -1 - HALF_YEAR if n > HALF_YEAR else 0
+    p_6m = float(p.iloc[idx_6])
+    out["price_6m_ago"] = round(p_6m, 4)
+    out["date_6m_ago"] = p.index[idx_6].strftime("%Y-%m-%d")
     out["return_6_1"] = p_1m / p_6m - 1.0
     vol_6 = float(daily.iloc[-HALF_YEAR:].std(ddof=1)) * math.sqrt(YEAR)
     out["volatility_6m"] = vol_6
@@ -62,10 +69,14 @@ def compute_symbol_metrics(prices: pd.Series) -> dict | None:
     if n >= MIN_OBS_12M + 1:
         idx_12 = max(0, n - 1 - YEAR)
         p_12m = float(p.iloc[idx_12])
+        out["price_12m_ago"] = round(p_12m, 4)
+        out["date_12m_ago"] = p.index[idx_12].strftime("%Y-%m-%d")
         out["return_12_1"] = p_1m / p_12m - 1.0
         vol_12 = float(daily.iloc[-YEAR:].std(ddof=1)) * math.sqrt(YEAR)
         out["volatility_12m"] = vol_12
     else:
+        out["price_12m_ago"] = None
+        out["date_12m_ago"] = None
         out["return_12_1"] = None
         out["volatility_12m"] = None
 
