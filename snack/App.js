@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import {
   View, Text, TextInput, FlatList, Pressable, Image, Modal, ScrollView,
   ActivityIndicator, StyleSheet, Platform, StatusBar, PanResponder,
+  RefreshControl, AppState,
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import Svg, { Path, Line as SvgLine, Circle, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
@@ -422,15 +423,38 @@ export default function App() {
     return m;
   }, [DATA, IDX, searchRows]);
 
+  const [refreshing, setRefreshing] = useState(false);
+  const lastFetch = useRef(0);
+
+  const loadFull = useCallback(() => {
+    lastFetch.current = Date.now();
+    return fetch(DATA_URL, { cache: 'no-store' }).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then((d) => { setDATA(d); return d; })
+      .catch((e) => setDATA((prev) => { if (!prev) setError(String(e.message || e)); return prev; }));
+  }, []);
+
   useEffect(() => {
     // Fast first paint: slim top-100 from the API, then the full 1500 swaps in.
     fetch(TOP_URL).then((r) => { if (!r.ok) throw new Error('http'); return r.json(); })
       .then((d) => setDATA((prev) => (prev && !prev.partial ? prev : { ...d, partial: true })))
       .catch(() => {});
-    fetch(DATA_URL, { cache: 'no-store' }).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(setDATA).catch((e) => setDATA((prev) => { if (!prev) setError(String(e.message || e)); return prev; }));
+    loadFull();
     AsyncStorage.getItem('watch').then((v) => { if (v) setWatch(new Set(JSON.parse(v))); }).catch(() => {});
-  }, []);
+  }, [loadFull]);
+
+  // Refetch when the app comes back to the foreground (at most every 5 minutes),
+  // so an icon-launched app never shows yesterday's data.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active' && Date.now() - lastFetch.current > 5 * 60 * 1000) loadFull();
+    });
+    return () => sub.remove();
+  }, [loadFull]);
+
+  const onRefresh = useCallback(() => {
+    tap('light'); setRefreshing(true);
+    loadFull().finally(() => setRefreshing(false));
+  }, [loadFull]);
 
   const toggleWatch = useCallback((sym) => {
     setWatch((prev) => {
@@ -587,6 +611,7 @@ export default function App() {
             maxToRenderPerBatch={16}
             windowSize={9}
             contentContainerStyle={{ paddingBottom: 20 }}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.text3} />}
           />
         )}
       </>
