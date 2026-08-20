@@ -231,8 +231,8 @@ function explainFor(g, key, asOf) {
   const money2 = (v) => '$' + Number(v).toFixed(2);
   switch (key) {
     case 'final': return { t: 'Average Volatility Adjusted Returns: the mean of VAR 12-1 and VAR 6-1. Every stock is ranked by this.', m: `(${g('score_12').toFixed(2)} + ${g('score_6').toFixed(2)}) ÷ 2 = ${g('final_score').toFixed(2)}` };
-    case 's12': return { t: 'Volatility-adjusted return: the 12-1 return divided by 12-month volatility. Reward per unit of risk.', m: `${pctv(g('return_12_1'))} ÷ ${(g('volatility_12m') * 100).toFixed(1)}% = ${g('score_12').toFixed(2)}` };
-    case 's6': return { t: 'Same reward-per-risk idea for the 6-1 return over 6-month volatility.', m: `${pctv(g('return_6_1'))} ÷ ${(g('volatility_6m') * 100).toFixed(1)}% = ${g('score_6').toFixed(2)}` };
+    case 's12': return { t: 'Volatility-adjusted return: the 12-1 return, annualized (× 252⁄231) so both windows share the same units, divided by 12-month volatility. Reward per unit of risk.', m: `${pctv(g('return_12_1'))} × 252⁄231 ÷ ${(g('volatility_12m') * 100).toFixed(1)}% = ${g('score_12').toFixed(2)}` };
+    case 's6': return { t: 'Same reward-per-risk idea for the 6-1 return, annualized (× 252⁄105), over 6-month volatility.', m: `${pctv(g('return_6_1'))} × 252⁄105 ÷ ${(g('volatility_6m') * 100).toFixed(1)}% = ${g('score_6').toFixed(2)}` };
     case 'r12': return { t: 'Price move from 12 months ago to 1 month ago. The most recent month is skipped on purpose — standard momentum practice.', m: `${money2(g('price_12m_ago'))} (${day(g('date_12m_ago'))}) → ${money2(g('price_1m_ago'))} (${day(g('date_1m_ago'))}) = ${pctv(g('return_12_1'))}` };
     case 'r6': return { t: 'Same idea over the shorter window: 6 months ago to 1 month ago.', m: `${money2(g('price_6m_ago'))} (${day(g('date_6m_ago'))}) → ${money2(g('price_1m_ago'))} (${day(g('date_1m_ago'))}) = ${pctv(g('return_6_1'))}` };
     case 'v12': return { t: 'How bumpy the ride has been: typical daily swings over 12 months, annualized (× √252).', m: `daily swings × √252 = ${(g('volatility_12m') * 100).toFixed(1)}%` };

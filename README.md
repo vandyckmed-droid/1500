@@ -16,9 +16,12 @@ GitHub Pages and refreshed automatically with GitHub Actions.
    - `return_6_1` = P(t−21) / P(t−126) − 1 — 6-month return excluding the most recent month
 4. **Volatility** — sample std of daily adjusted returns, annualized:
    `vol = std(daily_returns) × sqrt(252)`, over trailing 252d (12m) and 126d (6m) windows.
-5. **Scores**
-   - `score_12 = return_12_1 / volatility_12m`
-   - `score_6 = return_6_1 / volatility_6m`
+5. **Scores** — returns are annualized to match the annualized volatility
+   (the 12-1 window spans 231 trading days, the 6-1 window 105), so both
+   scores share the same reward-per-risk units and the composite weights the
+   two horizons equally:
+   - `score_12 = (return_12_1 × 252/231) / volatility_12m`
+   - `score_6 = (return_6_1 × 252/105) / volatility_6m`
    - **`final_score = 0.50 × score_12 + 0.50 × score_6`** (primary ranking)
    - `alternative_score = ((return_12_1 + return_6_1)/2) / ((volatility_12m + volatility_6m)/2)` (retained)
 6. **Ranks** — within each index and across the full S&P 1500 (rank 1 = best).

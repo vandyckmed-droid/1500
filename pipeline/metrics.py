@@ -13,6 +13,12 @@ Returns:
 Volatility:
 - std of daily simple returns over the trailing 252 (or 126) trading days,
   annualized with sqrt(252). Sample std (ddof=1).
+
+Scores:
+- Returns are annualized (x 252/window-days) before dividing by the annualized
+  volatility, so score_12 and score_6 share the same reward-per-risk units and
+  the 50/50 composite weights the two horizons genuinely equally. Without this
+  the 12-1 window (231 days) outweighs the 6-1 window (105 days) by ~2.2x.
 """
 from __future__ import annotations
 
@@ -77,13 +83,13 @@ def compute_symbol_metrics(prices: pd.Series) -> dict | None:
         out["return_12_1"] = None
         out["volatility_12m"] = None
 
-    def _score(ret, vol):
+    def _score(ret, vol, window_days):
         if ret is None or vol is None or vol <= 0 or not math.isfinite(vol):
             return None
-        return ret / vol
+        return (ret * YEAR / window_days) / vol
 
-    out["score_6"] = _score(out["return_6_1"], out["volatility_6m"])
-    out["score_12"] = _score(out["return_12_1"], out["volatility_12m"])
+    out["score_6"] = _score(out["return_6_1"], out["volatility_6m"], HALF_YEAR - MONTH)
+    out["score_12"] = _score(out["return_12_1"], out["volatility_12m"], YEAR - MONTH)
 
     if out["score_6"] is not None and out["score_12"] is not None:
         out["final_score"] = 0.5 * out["score_12"] + 0.5 * out["score_6"]
