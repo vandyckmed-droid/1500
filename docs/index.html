@@ -154,6 +154,16 @@
     background: var(--surface-2); color: var(--text-2); border-radius: 999px;
     padding: 4px 11px; font-size: .72rem; font-weight: 600;
   }
+  .ranks {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    margin: 12px 16px 0; background: var(--surface);
+    border: 1px solid var(--hairline); border-radius: 12px; overflow: hidden;
+  }
+  .ranks .cell { padding: 11px 6px; text-align: center; }
+  .ranks .cell + .cell { border-left: 1px solid var(--hairline); }
+  .ranks .rk { color: var(--text-3); font-size: .66rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .ranks .rv { font-size: 1.2rem; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .ranks .rd { color: var(--text-3); font-size: .68rem; margin-top: 1px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 16px 4px; }
   .card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; padding: 12px; cursor: pointer; }
   .card.sel { border-color: var(--brand); }
@@ -410,6 +420,23 @@ function explainFor(g, key) {
   return "";
 }
 
+function countWhere(col, val) {
+  const i = IDX[col];
+  let n = 0;
+  for (const r of DATA.rows) if (r[i] === val) n++;
+  return n;
+}
+function ranksStrip(g) {
+  const cell = (label, rank, total) =>
+    '<div class="cell"><div class="rk">' + label + '</div><div class="rv">#' + rank +
+    '</div><div class="rd">of ' + total + "</div></div>";
+  let html = '<div class="ranks">' +
+    cell("Universe", g("rank_1500"), DATA.rows.length) +
+    cell("Index", g("rank_index"), countWhere("index", g("index")));
+  if (g("sector")) html += cell("Sector", g("rank_sector"), countWhere("sector", g("sector")));
+  return html + "</div>";
+}
+
 function showStock(sym) {
   const r = BYSYM[sym];
   const panel = document.getElementById("stock");
@@ -422,9 +449,8 @@ function showStock(sym) {
     '<div class="badges">' +
       '<span class="badge">' + INDEX_NAME[g("index")] + "</span>" +
       (g("sector") ? '<span class="badge">' + esc(g("sector")) + "</span>" : "") +
-      '<span class="badge">#' + g("rank_index") + " in index</span>" +
-      '<span class="badge">#' + g("rank_1500") + " of 1500</span>" +
     "</div>" +
+    ranksStrip(g) +
     '<div class="hint">Tap any number to see exactly how it was calculated.</div>' +
     '<div class="grid">' +
       card("Price", "$" + g("last_price").toFixed(2), "", "price") +
