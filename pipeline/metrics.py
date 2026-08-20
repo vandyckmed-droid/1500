@@ -25,10 +25,6 @@ MONTH = 21
 HALF_YEAR = 126
 YEAR = 252
 
-# A symbol needs at least this many observations for the 12m metrics; slightly
-# relaxed vs. the theoretical 253 so recent holidays/IPO quirks don't drop
-# otherwise complete series.
-MIN_OBS_12M = 240
 MIN_OBS_6M = 120
 
 
@@ -65,9 +61,10 @@ def compute_symbol_metrics(prices: pd.Series) -> dict | None:
     vol_6 = float(daily.iloc[-HALF_YEAR:].std(ddof=1)) * math.sqrt(YEAR)
     out["volatility_6m"] = vol_6
 
-    # 12-month metrics (only with enough history)
-    if n >= MIN_OBS_12M + 1:
-        idx_12 = max(0, n - 1 - YEAR)
+    # 12-month metrics: require a genuine 252-trading-day lookback so the
+    # 12-1 window is never silently shortened for young listings.
+    if n >= YEAR + 1:
+        idx_12 = n - 1 - YEAR
         p_12m = float(p.iloc[idx_12])
         out["price_12m_ago"] = round(p_12m, 4)
         out["date_12m_ago"] = p.index[idx_12].strftime("%Y-%m-%d")
