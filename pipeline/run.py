@@ -29,6 +29,7 @@ TABLE_COLUMNS = [
     "sector",
     "index",
     "last_price",
+    "last_date",
     "price_1m_ago",
     "date_1m_ago",
     "price_6m_ago",

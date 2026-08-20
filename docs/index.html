@@ -276,7 +276,7 @@
   <!-- ===== stock detail screen (slides over) ===== -->
   <div id="stock">
     <div class="navbar">
-      <button class="back" onclick="history.back()">
+      <button class="back" onclick="location.hash='#/'">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.6"><path d="M15 5l-7 7 7 7"/></svg>
         Back
       </button>
@@ -393,7 +393,7 @@ const day = d => { const [y, m, dd] = d.split("-"); return ["Jan","Feb","Mar","A
 function explainFor(g, key) {
   switch (key) {
     case "price":
-      return "The latest closing price, from <b>" + day(DATA.as_of) + "</b>. All prices here are adjusted for dividends and stock splits.";
+      return "The latest closing price, from <b>" + day(g("last_date")) + "</b>. All prices here are adjusted for dividends and stock splits.";
     case "final":
       return "Average Volatility Adjusted Returns: the mean of VAR 12-1 and VAR 6-1 below. Every stock is ranked by this." +
         '<span class="math">(' + g("score_12").toFixed(2) + " + " + g("score_6").toFixed(2) + ") ÷ 2 = <b>" + g("final_score").toFixed(2) + "</b></span>";
@@ -446,7 +446,7 @@ function showStock(sym) {
   const body = document.getElementById("sbody");
 
   const ranks =
-    '<div class="strip">' +
+    '<div class="strip' + (g("sector") ? "" : " two") + '">' +
       cell("Universe", "#" + g("rank_1500"), "of " + DATA.rows.length) +
       cell("Index", "#" + g("rank_index"), "of " + countWhere("index", g("index"))) +
       (g("sector") ? cell("Sector", "#" + g("rank_sector"), "of " + countWhere("sector", g("sector"))) : "") +
@@ -471,7 +471,7 @@ function showStock(sym) {
   body.innerHTML =
     '<div class="sheader">' +
       '<div class="id"><div class="t">' + esc(sym) + '</div><div class="n">' + esc(g("name")) + "</div></div>" +
-      '<div class="hprice" data-key="price"><div class="pv">$' + g("last_price").toFixed(2) + '</div><div class="pd">' + day(DATA.as_of) + "</div></div>" +
+      '<div class="hprice" data-key="price"><div class="pv">$' + g("last_price").toFixed(2) + '</div><div class="pd">' + day(g("last_date")) + "</div></div>" +
     "</div>" +
     '<div class="badges">' +
       '<span class="badge">' + INDEX_NAME[g("index")] + "</span>" +
