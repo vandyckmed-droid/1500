@@ -343,6 +343,39 @@ class Stooq(Provider):
 
 
 KEYED_PROVIDERS = [FMP, Tiingo, Polygon, EODHD, TwelveData, AlphaVantage, Finnhub]
+
+
+def fetch_market_caps(symbols: list[str]) -> dict[str, float]:
+    """Best-effort market caps via FMP's batch quote endpoint (100 per call).
+
+    Returns {} when no FMP-compatible key is available or the calls fail; the
+    pipeline treats missing caps as display-only nulls.
+    """
+    api_key = os.environ.get("API_KEY", "")
+    if not api_key:
+        return {}
+    fmp = FMP(api_key)
+    out: dict[str, float] = {}
+    mapped = {fmp.map_symbol(sym): sym for sym in symbols}
+    keys = list(mapped)
+    for i in range(0, len(keys), 100):
+        chunk = keys[i : i + 100]
+        try:
+            data = fmp._get_json(
+                "https://financialmodelingprep.com/stable/batch-quote",
+                {"symbols": ",".join(chunk), "apikey": api_key},
+            )
+        except Exception:  # noqa: BLE001 - market cap is optional
+            continue
+        if not isinstance(data, list):
+            continue
+        for d in data:
+            sym = mapped.get(d.get("symbol"))
+            cap = d.get("marketCap")
+            if sym and isinstance(cap, (int, float)) and cap > 0:
+                out[sym] = float(cap)
+    log.info("market caps fetched for %d/%d symbols", len(out), len(symbols))
+    return out
 FALLBACK_PROVIDERS = [Yahoo, Stooq]
 
 

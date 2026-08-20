@@ -47,6 +47,7 @@ TABLE_COLUMNS = [
     "score_6",
     "final_score",
     "alternative_score",
+    "market_cap",
     "rank_index",
     "rank_sector",
     "rank_1500",
@@ -81,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
 
     log.info("computing metrics and ranks")
     table, excluded = metrics.build_table(members, series)
+    caps = prices.fetch_market_caps(table["symbol"].tolist())
+    table["market_cap"] = table["symbol"].map(caps)
 
     errors = validate.validate(table, members)
     if errors:
