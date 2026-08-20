@@ -167,6 +167,8 @@
   }
   .rstar.on { color: #f5b93e; }
   .id .n { color: var(--text-2); font-size: .8rem; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rdel { font-size: .68rem; font-weight: 700; margin-left: 6px; vertical-align: 1px; }
+  .rdel.up { color: var(--up); } .rdel.down { color: var(--down); }
   .chip {
     width: var(--chip-w); margin-left: 6px; flex: none;
     text-align: right; padding: 7px 0;
@@ -442,6 +444,7 @@ const LOGO = s => "https://images.financialmodelingprep.com/symbol/" + encodeURI
 const API = location.hostname.endsWith("workers.dev") ? "" : "https://1500.vandyck-med.workers.dev";
 
 let DATA = null, IDX = {}, BYSYM = {}, view = "all", mode = "voladj", query = "", shown = 0, current = [];
+let DELTAS = null; // symbol -> rank change vs previous day (positive = climbed)
 const WATCH = new Set((() => { try { return JSON.parse(localStorage.getItem("watch") || "[]"); } catch (e) { return []; } })());
 function saveWatch() {
   try { localStorage.setItem("watch", JSON.stringify([...WATCH])); } catch (e) {}
@@ -482,6 +485,9 @@ function loadData(first) {
     renderSectors();
     refresh();
     if (first) route();
+    fetch(API + "/api/deltas").then(r => (r.ok ? r.json() : null)).then(x => {
+      if (x && x.deltas && Object.keys(x.deltas).length) { DELTAS = x.deltas; render(true); }
+    }).catch(() => {});
   }).catch(e => {
     if (first) document.getElementById("status").textContent = "Failed to load: " + e.message;
   });
@@ -641,8 +647,11 @@ function render(reset) {
     const el = document.createElement("div");
     el.className = "row";
     const on = WATCH.has(sym);
+    const dl = DELTAS ? DELTAS[sym] : null;
     el.innerHTML =
-      '<div class="id"><div class="t">' + esc(sym) + '</div><div class="n">' + esc(r[IDX.name]) + "</div></div>" +
+      '<div class="id"><div class="t">' + esc(sym) +
+      (dl ? '<span class="rdel ' + (dl > 0 ? "up" : "down") + '">' + (dl > 0 ? "▲" : "▼") + Math.abs(dl) + "</span>" : "") +
+      '</div><div class="n">' + esc(r[IDX.name]) + "</div></div>" +
       (mode === "today" ? todayChips(sym)
         : chip(r[IDX[cfg.cols[0]]], cfg) + (cfg.cols[1] ? chip(r[IDX[cfg.cols[1]]], cfg) : '<span class="chip flat"></span>')) +
       '<button class="rstar' + (on ? " on" : "") + '" aria-label="watchlist">' + (on ? "★" : "☆") + "</button>";
