@@ -329,8 +329,8 @@ function StockSheet({ row, IDX, DATA, watch, onToggleWatch, onClose }) {
           ]} />
           {ex && ['v12', 'v6', 'mcapx'].includes(explain) && <ExplainBox ex={ex} />}
 
-          <Text style={st.secLabel}>AI analysis</Text>
-          <AIBox busy={aiBusy} text={ai} label="Explain this ranking" onRun={() => {
+          <Text style={st.secLabel}>About the company</Text>
+          <AIBox busy={aiBusy} text={ai} label="What does this company do?" onRun={() => {
             setAiBusy(true);
             fetch(ANALYZE_URL(sym)).then((r) => r.json())
               .then((d) => setAi(d.analysis || 'Analysis unavailable right now — try again in a minute.'))
