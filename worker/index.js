@@ -121,17 +121,20 @@ function apiSearch(d, params) {
   return json({ as_of: d.as_of, total: d.rows.length, columns: d.columns, rows });
 }
 
+// One canonical Yahoo chart URL per symbol: quote, spark, and today all
+// request it identically, so the edge cache serves them from one upstream hit.
+const yahooChart = (sym) =>
+  "https://query1.finance.yahoo.com/v8/finance/chart/" +
+  encodeURIComponent(sym.replace(/\./g, "-")) + // BRK.B → BRK-B
+  "?range=1d&interval=5m&includePrePost=false";
+const yahooOpts = {
+  headers: { "User-Agent": "Mozilla/5.0 (compatible; sp1500-momentum)" },
+  cf: { cacheTtl: QUOTE_TTL_S, cacheEverything: true },
+};
+
 async function apiQuote(symbol) {
   const sym = decodeURIComponent(symbol).toUpperCase();
-  const ysym = sym.replace(/\./g, "-"); // BRK.B → BRK-B
-  const url =
-    "https://query1.finance.yahoo.com/v8/finance/chart/" +
-    encodeURIComponent(ysym) +
-    "?range=1d&interval=5m&includePrePost=false";
-  const res = await fetch(url, {
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; sp1500-momentum)" },
-    cf: { cacheTtl: QUOTE_TTL_S, cacheEverything: true },
-  });
+  const res = await fetch(yahooChart(sym), yahooOpts);
   if (!res.ok) return json({ error: "quote unavailable", symbol: sym }, 502);
   const body = await res.json();
   const m = body?.chart?.result?.[0]?.meta;
@@ -268,16 +271,7 @@ async function apiAsk(env, d, body) {
 
 async function apiSpark(symbol) {
   const sym = decodeURIComponent(symbol).toUpperCase();
-  const ysym = sym.replace(/\./g, "-");
-  // Same URL and cache settings as apiQuote, so both share one upstream fetch.
-  const url =
-    "https://query1.finance.yahoo.com/v8/finance/chart/" +
-    encodeURIComponent(ysym) +
-    "?range=1d&interval=5m&includePrePost=false";
-  const res = await fetch(url, {
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; sp1500-momentum)" },
-    cf: { cacheTtl: QUOTE_TTL_S, cacheEverything: true },
-  });
+  const res = await fetch(yahooChart(sym), yahooOpts);
   if (!res.ok) return json({ error: "spark unavailable", symbol: sym }, 502);
   const body = await res.json();
   const r0 = body?.chart?.result?.[0];
@@ -304,6 +298,31 @@ async function apiSpark(symbol) {
   );
 }
 
+// Batched day-change quotes for the list view. Capped at 40 symbols per call
+// (the free plan allows 50 subrequests per request); each symbol's upstream
+// fetch is shared with /api/quote and /api/spark via the edge cache.
+async function apiToday(searchParams) {
+  const syms = (searchParams.get("syms") || "")
+    .split(",").map((s) => s.trim().toUpperCase()).filter(Boolean).slice(0, 40);
+  if (!syms.length) return json({ error: "syms required" }, 400);
+  const quotes = {};
+  await Promise.all(syms.map(async (sym) => {
+    quotes[sym] = null;
+    try {
+      const res = await fetch(yahooChart(sym), yahooOpts);
+      if (!res.ok) return;
+      const m = (await res.json())?.chart?.result?.[0]?.meta;
+      const prev = m?.chartPreviousClose ?? m?.previousClose;
+      if (m?.regularMarketPrice != null && prev)
+        quotes[sym] = {
+          p: +m.regularMarketPrice,
+          c: +((m.regularMarketPrice / prev - 1) * 100).toFixed(2),
+        };
+    } catch (e) {}
+  }));
+  return json({ quotes }, 200, { "Cache-Control": "public, max-age=60" });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -320,6 +339,7 @@ export default {
       if (quote) return await apiQuote(quote[1]);
       const spark = path.match(/^\/api\/spark\/([^/]+)$/);
       if (spark) return await apiSpark(spark[1]);
+      if (path === "/api/today") return await apiToday(url.searchParams);
 
       const d = await loadData(env, request);
       if (path === "/api/summary") return json({ ...meta(d), sectors: d.sectors });
@@ -342,6 +362,7 @@ export default {
             "/api/search?q=&n=",
             "/api/quote/:symbol",
             "/api/spark/:symbol",
+            "/api/today?syms=",
             "/api/analyze/:symbol",
             "POST /api/review {symbols}",
             "POST /api/ask {question, symbol?}",
