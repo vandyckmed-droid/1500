@@ -141,11 +141,23 @@
     background: var(--surface-2); color: var(--text-2); border-radius: 999px;
     padding: 4px 11px; font-size: .72rem; font-weight: 600;
   }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 16px; }
-  .card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; padding: 12px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 16px 4px; }
+  .card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; padding: 12px; cursor: pointer; }
+  .card.sel { border-color: var(--brand); }
   .card .k { color: var(--text-3); font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
   .card .v { font-size: 1.15rem; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
   .card .v.up { color: var(--up); } .card .v.down { color: var(--down); }
+  .hint { padding: 2px 16px 0; color: var(--text-3); font-size: .74rem; }
+  .explain {
+    margin: 12px 16px 20px; padding: 13px 14px; background: var(--surface);
+    border: 1px solid var(--hairline); border-left: 3px solid var(--brand);
+    border-radius: 12px; font-size: .86rem; color: var(--text-2); line-height: 1.5;
+  }
+  .explain b { color: var(--text); }
+  .explain .math {
+    display: block; margin-top: 8px; padding: 9px 11px; background: var(--surface-2);
+    border-radius: 8px; color: var(--text); font-variant-numeric: tabular-nums; font-size: .84rem;
+  }
 
   /* ---------- about screen ---------- */
   #about .navbar .title { padding-right: 0; margin: 0 auto; }
@@ -337,20 +349,53 @@ function render(reset) {
 function refresh() { render(true); }
 
 /* ---------- stock detail ---------- */
-function pctCard(label, v, signed) {
-  if (v == null) return card(label, "—", "");
+function pctCard(label, v, signed, key) {
+  if (v == null) return card(label, "—", "", key);
   const cls = signed ? (v > 0 ? "up" : v < 0 ? "down" : "") : "";
   const txt = (signed && v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
-  return card(label, txt, cls);
+  return card(label, txt, cls, key);
 }
-function numCard(label, v, signed) {
-  if (v == null) return card(label, "—", "");
+function numCard(label, v, signed, key) {
+  if (v == null) return card(label, "—", "", key);
   const cls = signed ? (v > 0 ? "up" : v < 0 ? "down" : "") : "";
-  return card(label, v.toFixed(2), cls);
+  return card(label, v.toFixed(2), cls, key);
 }
-function card(k, v, cls) {
-  return '<div class="card"><div class="k">' + k + '</div><div class="v ' + cls + '">' + v + "</div></div>";
+function card(k, v, cls, key) {
+  return '<div class="card" data-key="' + key + '"><div class="k">' + k + '</div><div class="v ' + cls + '">' + v + "</div></div>";
 }
+const $ = v => "$" + Number(v).toFixed(2);
+const pct1 = v => (v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
+const day = d => { const [y, m, dd] = d.split("-"); return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m - 1] + " " + (+dd) + ", " + y; };
+
+function explainFor(g, key) {
+  switch (key) {
+    case "price":
+      return "The latest closing price, from <b>" + day(g("last_date")) + "</b>. All prices here are adjusted for dividends and stock splits.";
+    case "final":
+      return "The number every stock is ranked by: the average of the two vol-adjusted returns below." +
+        '<span class="math">(' + g("score_12").toFixed(2) + " + " + g("score_6").toFixed(2) + ") ÷ 2 = <b>" + g("final_score").toFixed(2) + "</b></span>";
+    case "r12":
+      return "How much the price moved from 12 months ago to 1 month ago. The most recent month is skipped on purpose — that's standard practice for momentum, because very recent jumps often reverse." +
+        '<span class="math">' + $(g("price_12m_ago")) + " (" + day(g("date_12m_ago")) + ") → " + $(g("price_1m_ago")) + " (" + day(g("date_1m_ago")) + ") = <b>" + pct1(g("return_12_1")) + "</b></span>";
+    case "r6":
+      return "Same idea over a shorter window: from 6 months ago to 1 month ago, skipping the most recent month." +
+        '<span class="math">' + $(g("price_6m_ago")) + " (" + day(g("date_6m_ago")) + ") → " + $(g("price_1m_ago")) + " (" + day(g("date_1m_ago")) + ") = <b>" + pct1(g("return_6_1")) + "</b></span>";
+    case "v12":
+      return "How bumpy the ride has been: the typical size of the stock's day-to-day moves over the last 12 months, scaled up to a yearly figure (× √252, the number of trading days in a year). Higher = wilder swings." +
+        '<span class="math">daily swings over 12 months × √252 = <b>' + (g("volatility_12m") * 100).toFixed(1) + "%</b></span>";
+    case "v6":
+      return "Same bumpiness measure over just the last 6 months." +
+        '<span class="math">daily swings over 6 months × √252 = <b>' + (g("volatility_6m") * 100).toFixed(1) + "%</b></span>";
+    case "s12":
+      return "Reward per unit of risk: the 12-1 return divided by the 12-month volatility. A big gain achieved smoothly scores higher than the same gain with wild swings." +
+        '<span class="math">' + pct1(g("return_12_1")) + " ÷ " + (g("volatility_12m") * 100).toFixed(1) + "% = <b>" + g("score_12").toFixed(2) + "</b></span>";
+    case "s6":
+      return "Same reward-per-risk idea over the 6-month window." +
+        '<span class="math">' + pct1(g("return_6_1")) + " ÷ " + (g("volatility_6m") * 100).toFixed(1) + "% = <b>" + g("score_6").toFixed(2) + "</b></span>";
+  }
+  return "";
+}
+
 function showStock(sym) {
   const r = BYSYM[sym];
   const panel = document.getElementById("stock");
@@ -366,17 +411,29 @@ function showStock(sym) {
       '<span class="badge">#' + g("rank_index") + " in index</span>" +
       '<span class="badge">#' + g("rank_1500") + " of 1500</span>" +
     "</div>" +
+    '<div class="hint">Tap any number to see exactly how it was calculated.</div>' +
     '<div class="grid">' +
-      card("Price", "$" + g("last_price").toFixed(2), "") +
-      numCard("Momentum score", g("final_score"), true) +
-      pctCard("Return 12-1", g("return_12_1"), true) +
-      pctCard("Return 6-1", g("return_6_1"), true) +
-      pctCard("Volatility 12M", g("volatility_12m"), false) +
-      pctCard("Volatility 6M", g("volatility_6m"), false) +
-      numCard("Vol-adj return 12M", g("score_12"), true) +
-      numCard("Vol-adj return 6M", g("score_6"), true) +
-    "</div>";
+      card("Price", "$" + g("last_price").toFixed(2), "", "price") +
+      numCard("Momentum score", g("final_score"), true, "final") +
+      pctCard("Return 12-1", g("return_12_1"), true, "r12") +
+      pctCard("Return 6-1", g("return_6_1"), true, "r6") +
+      pctCard("Volatility 12M", g("volatility_12m"), false, "v12") +
+      pctCard("Volatility 6M", g("volatility_6m"), false, "v6") +
+      numCard("Vol-adj return 12M", g("score_12"), true, "s12") +
+      numCard("Vol-adj return 6M", g("score_6"), true, "s6") +
+    "</div>" +
+    '<div class="explain" id="explain" hidden></div>';
   body.querySelector(".sheader").prepend(logoEl(sym, "logo"));
+  body.querySelector(".grid").addEventListener("click", e => {
+    const c = e.target.closest(".card"); if (!c) return;
+    const ex = document.getElementById("explain");
+    const already = c.classList.contains("sel");
+    for (const x of body.querySelectorAll(".card")) x.classList.remove("sel");
+    if (already) { ex.hidden = true; return; }
+    c.classList.add("sel");
+    ex.innerHTML = explainFor(g, c.dataset.key);
+    ex.hidden = false;
+  });
   panel.classList.add("open");
   panel.scrollTop = 0;
 }
