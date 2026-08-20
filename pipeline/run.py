@@ -55,6 +55,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--no-cache", action="store_true", help="ignore the local price cache")
     parser.add_argument("--output", default="docs/data/rankings.json")
+    parser.add_argument(
+        "--prices-dir",
+        default="prices_out",
+        help="directory for per-ticker price JSON (published to the 'data' "
+        "branch by CI, not committed to main)",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -108,6 +114,27 @@ def main(argv: list[str] | None = None) -> int:
     (hist_dir / f"{as_of}.json").write_text(blob)
     dates = sorted(p.stem for p in hist_dir.glob("*.json") if p.stem != "index")
     (hist_dir / "index.json").write_text(json.dumps({"dates": dates}))
+
+    # Per-ticker price series for the site's charts. These are large and
+    # regenerated whole every day, so they live on the orphan 'data' branch
+    # (force-pushed by CI) instead of polluting main's history.
+    prices_dir = Path(args.prices_dir)
+    prices_dir.mkdir(parents=True, exist_ok=True)
+    ranked_syms = set(table["symbol"])
+    for sym, s in series.items():
+        if sym not in ranked_syms:
+            continue
+        prices_dir.joinpath(f"{sym.replace('.', '_')}.json").write_text(
+            json.dumps(
+                {
+                    "symbol": sym,
+                    "dates": [d.strftime("%Y-%m-%d") for d in s.index],
+                    "close": [round(float(v), 4) for v in s],
+                },
+                separators=(",", ":"),
+            )
+        )
+    log.info("wrote %d price series to %s", len(ranked_syms), prices_dir)
     log.info(
         "wrote %s: %d ranked, %d excluded, as of %s",
         out,
