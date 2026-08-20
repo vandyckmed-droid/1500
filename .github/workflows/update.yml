@@ -39,6 +39,17 @@ jobs:
           PRICE_PROVIDER: ${{ vars.PRICE_PROVIDER }}
         run: python -m pipeline.run --no-cache
 
+      - name: Publish price series to the data branch
+        run: |
+          cd prices_out
+          git init -q -b data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -qm "Price series $(date -u +%F)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data
+          cd ..
+
       - name: Commit and push updated data
         run: |
           git config user.name "github-actions[bot]"
