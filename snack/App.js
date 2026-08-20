@@ -10,7 +10,11 @@ import Svg, { Path, Line as SvgLine, Circle, Defs, LinearGradient, Stop, Rect } 
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const DATA_URL = 'https://vandyckmed-droid.github.io/1500/data/rankings.json';
+const API_BASE = 'https://1500.vandyck-med.workers.dev';
+const DATA_URL = API_BASE + '/data/rankings.json';
+const TOP_URL = API_BASE + '/api/top?n=100';        // slim first paint (~20 KB)
+const SEARCH_URL = (q) => API_BASE + '/api/search?q=' + encodeURIComponent(q) + '&n=50';
+const QUOTE_URL = (s) => API_BASE + '/api/quote/' + encodeURIComponent(s);
 const PRICE_URL = (s) => 'https://raw.githubusercontent.com/vandyckmed-droid/1500/data/' + s.replace('.', '_') + '.json';
 const LOGO_URL = (s) => 'https://images.financialmodelingprep.com/symbol/' + s.replace('.', '-') + '.png';
 
@@ -237,11 +241,22 @@ function explainFor(g, key, asOf) {
 // ---------------- stock sheet ----------------
 function StockSheet({ row, IDX, DATA, watch, onToggleWatch, onClose }) {
   const [explain, setExplain] = useState(null);
+  const [quote, setQuote] = useState(null);
+  const sym = row ? row[IDX.symbol] : null;
+  useEffect(() => {
+    setQuote(null);
+    if (!sym) return;
+    let live = true;
+    fetch(QUOTE_URL(sym)).then((r) => (r.ok ? r.json() : null))
+      .then((q) => { if (live && q && q.price != null) setQuote(q); }).catch(() => {});
+    return () => { live = false; };
+  }, [sym]);
   if (!row) return null;
   const g = (c) => row[IDX[c]];
-  const sym = g('symbol');
   const on = watch.has(sym);
-  const countWhere = (col, val) => DATA.rows.reduce((n, r) => n + (r[IDX[col]] === val ? 1 : 0), 0);
+  const total = DATA.total || DATA.rows.length;
+  const idxCount = DATA.ranked_counts ? DATA.ranked_counts[g('index')] : null;
+  const secMeta = (DATA.sectors || []).find((s) => s.sector === g('sector'));
   const onCell = (key) => setExplain((e) => (e === key ? null : key));
   const ex = explain ? explainFor(g, explain) : null;
 
@@ -261,8 +276,14 @@ function StockSheet({ row, IDX, DATA, watch, onToggleWatch, onClose }) {
               <Text style={{ color: C.text2, fontSize: 13 }} numberOfLines={1}>{g('name')}</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
-              <Text style={{ color: C.text, fontWeight: '700', fontSize: 19 }}>{money(g('last_price'))}</Text>
-              <Text style={{ color: C.text3, fontSize: 11 }}>{day(g('last_date'))}</Text>
+              <Text style={{ color: C.text, fontWeight: '700', fontSize: 19 }}>{money(quote ? quote.price : g('last_price'))}</Text>
+              {quote ? (
+                <Text style={{ color: quote.change_pct >= 0 ? C.up : C.down, fontSize: 11, fontWeight: '600' }}>
+                  {(quote.change_pct >= 0 ? '+' : '') + quote.change_pct.toFixed(2) + '% today'}
+                </Text>
+              ) : (
+                <Text style={{ color: C.text3, fontSize: 11 }}>{day(g('last_date'))}</Text>
+              )}
             </View>
           </View>
           <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 8, flexWrap: 'wrap' }}>
@@ -274,9 +295,9 @@ function StockSheet({ row, IDX, DATA, watch, onToggleWatch, onClose }) {
 
           <Text style={st.secLabel}>Rank</Text>
           <Strip cells={[
-            { k: 'Universe', v: '#' + g('rank_1500'), sub: 'of ' + DATA.rows.length },
-            { k: 'Index', v: '#' + g('rank_index'), sub: 'of ' + countWhere('index', g('index')) },
-            ...(g('sector') ? [{ k: 'Sector', v: '#' + g('rank_sector'), sub: 'of ' + countWhere('sector', g('sector')) }] : []),
+            { k: 'Universe', v: '#' + g('rank_1500'), sub: 'of ' + total },
+            { k: 'Index', v: '#' + g('rank_index'), sub: idxCount ? 'of ' + idxCount : '' },
+            ...(g('sector') ? [{ k: 'Sector', v: '#' + g('rank_sector'), sub: secMeta ? 'of ' + secMeta.count : '' }] : []),
           ]} />
 
           <Text style={st.secLabel}>VAR — volatility-adjusted return</Text>
@@ -328,6 +349,18 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [watch, setWatch] = useState(new Set());
   const [openSym, setOpenSym] = useState(null);
+  const [searchRows, setSearchRows] = useState(null);
+
+  // While only the slim top-100 is loaded, search the API instead of the
+  // partial list; once the full dataset lands this is bypassed entirely.
+  useEffect(() => {
+    if (!DATA || !DATA.partial || !query) { setSearchRows(null); return; }
+    const t = setTimeout(() => {
+      fetch(SEARCH_URL(query)).then((r) => (r.ok ? r.json() : null))
+        .then((d) => d && setSearchRows(d.rows)).catch(() => {});
+    }, 250);
+    return () => clearTimeout(t);
+  }, [DATA, query]);
 
   const IDX = useMemo(() => {
     const m = {};
@@ -337,12 +370,17 @@ export default function App() {
   const BYSYM = useMemo(() => {
     const m = {};
     if (DATA) DATA.rows.forEach((r) => { m[r[IDX.symbol]] = r; });
+    if (searchRows) searchRows.forEach((r) => { m[r[IDX.symbol]] = r; });
     return m;
-  }, [DATA, IDX]);
+  }, [DATA, IDX, searchRows]);
 
   useEffect(() => {
+    // Fast first paint: slim top-100 from the API, then the full 1500 swaps in.
+    fetch(TOP_URL).then((r) => { if (!r.ok) throw new Error('http'); return r.json(); })
+      .then((d) => setDATA((prev) => (prev && !prev.partial ? prev : { ...d, partial: true })))
+      .catch(() => {});
     fetch(DATA_URL, { cache: 'no-store' }).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(setDATA).catch((e) => setError(String(e.message || e)));
+      .then(setDATA).catch((e) => setDATA((prev) => { if (!prev) setError(String(e.message || e)); return prev; }));
     AsyncStorage.getItem('watch').then((v) => { if (v) setWatch(new Set(JSON.parse(v))); }).catch(() => {});
   }, []);
 
@@ -357,7 +395,7 @@ export default function App() {
 
   const rows = useMemo(() => {
     if (!DATA) return [];
-    let rs = DATA.rows;
+    let rs = DATA.partial && query && searchRows ? searchRows : DATA.rows;
     if (view === 'watch') rs = rs.filter((r) => watch.has(r[IDX.symbol]));
     else if (view !== 'all') rs = rs.filter((r) => r[IDX.index] === view);
     if (query) {
@@ -372,7 +410,7 @@ export default function App() {
       rs = rs.slice().sort((a, b) => (b[i] || 0) - (a[i] || 0));
     }
     return rs;
-  }, [DATA, IDX, view, query, watch, mode]);
+  }, [DATA, IDX, view, query, watch, mode, searchRows]);
 
   const cfg = MODES[mode];
 
@@ -433,7 +471,7 @@ export default function App() {
       const c = DATA.constituent_counts;
       return (
         <ScrollView contentContainerStyle={{ padding: 16 }}>
-          {[['Prices as of', DATA.as_of], ['Stocks ranked', DATA.rows.length + ' of ' + (c.sp500 + c.sp400 + c.sp600)], ['Last update', DATA.generated_at.replace('T', ' ').replace('Z', ' UTC')]].map(([k, v]) => (
+          {[['Prices as of', DATA.as_of], ['Stocks ranked', (DATA.total || DATA.rows.length) + ' of ' + (c.sp500 + c.sp400 + c.sp600)], ['Last update', DATA.generated_at.replace('T', ' ').replace('Z', ' UTC')]].map(([k, v]) => (
             <View key={k} style={st.kv}><Text style={{ color: C.text2 }}>{k}</Text><Text style={{ color: C.text, fontWeight: '600' }}>{v}</Text></View>
           ))}
           <Text style={st.aboutH}>What this is</Text>
