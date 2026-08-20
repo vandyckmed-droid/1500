@@ -119,7 +119,7 @@
     text-transform: uppercase; letter-spacing: .06em;
   }
   .colhead .l { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .colhead .m { width: var(--chip-w); text-align: center; margin-left: 8px; }
+  .colhead .m { width: var(--chip-w); text-align: right; margin-left: 8px; }
 
   /* ---------- rows ---------- */
   .row {
@@ -153,12 +153,12 @@
   .id .n { color: var(--text-2); font-size: .76rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chip {
     width: var(--chip-w); margin-left: 8px; flex: none;
-    text-align: center; border-radius: 6px; padding: 7px 0;
-    font-size: .8rem; font-weight: 600; font-variant-numeric: tabular-nums;
+    text-align: right; padding: 7px 0;
+    font-size: .92rem; font-weight: 700; font-variant-numeric: tabular-nums;
   }
-  .chip.up { background: var(--up-bg); color: var(--up); }
-  .chip.down { background: var(--down-bg); color: var(--down); }
-  .chip.flat { background: var(--flat-bg); color: var(--text-2); }
+  .chip.up { color: var(--up); }
+  .chip.down { color: var(--down); }
+  .chip.flat { color: var(--text-2); }
 
   .more { display: block; width: calc(100% - 32px); margin: 14px 16px; padding: 11px;
     background: var(--surface-2); color: var(--text-2); border: none; border-radius: 9px;
@@ -436,7 +436,7 @@ fetch("data/rankings.json", {cache: "no-store"}).then(r => {
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 }
-const TILE_CACHE = (() => { try { return JSON.parse(localStorage.getItem("tilecls") || "{}"); } catch (e) { return {}; } })();
+const TILE_CACHE = (() => { try { return JSON.parse(localStorage.getItem("tilecls2") || "{}"); } catch (e) { return {}; } })();
 function classifyLogo(img, sym) {
   // Colorful or light logos sit on a dark tile; dark unsaturated glyphs and
   // images with a baked-in white background keep the light tile.
@@ -461,8 +461,10 @@ function classifyLogo(img, sym) {
     const corners = [0, 23 * 4, 23 * 24 * 4, (24 * 24 - 1) * 4].every(i =>
       d[i + 3] > 200 && (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) > 200);
     if (opaque / 576 > 0.95 && corners) return "lt";
-    if (lum < 105 && sat < 55) return "lt";
-    return "dk";
+    // dark tile only when the mark will actually pop on it: bright overall,
+    // or vividly saturated (a navy or muted-dark logo stays on light)
+    if (lum >= 110 || sat >= 120) return "dk";
+    return "lt";
   } catch (e) {
     return "lt";
   }
@@ -478,7 +480,7 @@ function logoEl(sym, cls) {
     if (!TILE_CACHE[sym]) {
       const t = classifyLogo(img, sym);
       TILE_CACHE[sym] = t;
-      try { localStorage.setItem("tilecls", JSON.stringify(TILE_CACHE)); } catch (e) {}
+      try { localStorage.setItem("tilecls2", JSON.stringify(TILE_CACHE)); } catch (e) {}
       if (t === "dk") img.classList.add("dk");
     }
   };
