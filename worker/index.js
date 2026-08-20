@@ -53,10 +53,12 @@ const json = (obj, status = 200, extra = {}) =>
     },
   });
 
-async function loadData(env, request) {
+async function loadData(env) {
   const now = Date.now();
   if (cached.data && now - cached.at < DATA_TTL_MS) return cached.data;
-  const res = await env.ASSETS.fetch(new URL("/data/rankings.json", request.url));
+  // The assets binding routes by path only, so a fixed dummy origin works from
+  // both fetch and scheduled handlers.
+  const res = await env.ASSETS.fetch("https://assets.internal/data/rankings.json");
   if (!res.ok) throw new Error("rankings.json unavailable");
   const data = await res.json();
   data._col = Object.fromEntries(data.columns.map((c, i) => [c, i]));
@@ -323,7 +325,110 @@ async function apiToday(searchParams) {
   return json({ quotes }, 200, { "Cache-Control": "public, max-age=60" });
 }
 
+/* ---------- rank history (D1) ---------- */
+
+let ingestedAsOf = null;
+
+// Store one row per stock per as_of day. Idempotent: skips days already stored.
+async function ensureIngest(env, d) {
+  if (!env.DB || ingestedAsOf === d.as_of) return;
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS ranks (as_of TEXT NOT NULL, symbol TEXT NOT NULL, " +
+    "idx TEXT, sector TEXT, rank_1500 INTEGER, rank_index INTEGER, rank_sector INTEGER, " +
+    "final_score REAL, last_price REAL, market_cap REAL, PRIMARY KEY (as_of, symbol))"
+  ).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS ranks_sym ON ranks(symbol, as_of)").run();
+  const have = await env.DB.prepare("SELECT COUNT(*) n FROM ranks WHERE as_of = ?")
+    .bind(d.as_of).first("n");
+  if (!have) {
+    const c = d._col;
+    const stmts = [];
+    const PER = 10; // 10 rows x 10 columns = 100 bound params, D1's per-query cap
+    for (let i = 0; i < d.rows.length; i += PER) {
+      const chunk = d.rows.slice(i, i + PER);
+      const sql = "INSERT OR REPLACE INTO ranks VALUES " +
+        chunk.map(() => "(?,?,?,?,?,?,?,?,?,?)").join(",");
+      const vals = [];
+      for (const r of chunk)
+        vals.push(d.as_of, r[c.symbol], r[c.index], r[c.sector], r[c.rank_1500],
+          r[c.rank_index], r[c.rank_sector], r[c.final_score], r[c.last_price], r[c.market_cap]);
+      stmts.push(env.DB.prepare(sql).bind(...vals));
+    }
+    for (let i = 0; i < stmts.length; i += 40) await env.DB.batch(stmts.slice(i, i + 40));
+  }
+  ingestedAsOf = d.as_of;
+}
+
+async function lastDates(env, n) {
+  const res = await env.DB.prepare(
+    "SELECT DISTINCT as_of FROM ranks ORDER BY as_of DESC LIMIT ?"
+  ).bind(n).all();
+  return res.results.map((r) => r.as_of);
+}
+
+// Rank change vs the previous stored day for every symbol (positive = climbed).
+async function apiDeltas(env, d) {
+  if (!env.DB) return json({ error: "history not configured" }, 503);
+  await ensureIngest(env, d);
+  const dates = await lastDates(env, 2);
+  if (dates.length < 2)
+    return json({ as_of: d.as_of, prev: null, deltas: {} }, 200, { "Cache-Control": "public, max-age=900" });
+  const res = await env.DB.prepare(
+    "SELECT a.symbol s, b.rank_1500 - a.rank_1500 dl FROM ranks a " +
+    "JOIN ranks b ON a.symbol = b.symbol AND b.as_of = ? WHERE a.as_of = ?"
+  ).bind(dates[1], dates[0]).all();
+  const deltas = {};
+  for (const r of res.results) if (r.dl) deltas[r.s] = r.dl;
+  return json({ as_of: dates[0], prev: dates[1], deltas }, 200, { "Cache-Control": "public, max-age=1800" });
+}
+
+async function apiMovers(env, d, params) {
+  if (!env.DB) return json({ error: "history not configured" }, 503);
+  await ensureIngest(env, d);
+  const days = Math.min(Math.max(parseInt(params.get("days"), 10) || 1, 1), 30);
+  const n = Math.min(Math.max(parseInt(params.get("n"), 10) || 15, 1), 50);
+  const dates = await lastDates(env, days + 1);
+  if (dates.length < 2)
+    return json({ as_of: d.as_of, prev_as_of: null, up: [], down: [] }, 200, { "Cache-Control": "public, max-age=900" });
+  const prev = dates[dates.length - 1];
+  const names = {};
+  for (const r of d.rows) names[r[d._col.symbol]] = r[d._col.name];
+  const pick = async (order) => {
+    const cmp = order === "DESC" ? ">" : "<";
+    const res = await env.DB.prepare(
+      "SELECT a.symbol s, a.sector sec, a.rank_1500 rk, b.rank_1500 - a.rank_1500 dl " +
+      "FROM ranks a JOIN ranks b ON a.symbol = b.symbol AND b.as_of = ? " +
+      "WHERE a.as_of = ? AND b.rank_1500 - a.rank_1500 " + cmp + " 0 ORDER BY dl " + order + " LIMIT ?"
+    ).bind(prev, dates[0], n).all();
+    return res.results.map((r) => ({
+      symbol: r.s, name: names[r.s] || null, sector: r.sec, rank: r.rk, delta: r.dl,
+    }));
+  };
+  return json(
+    { as_of: dates[0], prev_as_of: prev, up: await pick("DESC"), down: await pick("ASC") },
+    200, { "Cache-Control": "public, max-age=1800" }
+  );
+}
+
+async function apiHistory(env, d, symbol, params) {
+  if (!env.DB) return json({ error: "history not configured" }, 503);
+  await ensureIngest(env, d);
+  const sym = decodeURIComponent(symbol).toUpperCase();
+  const limit = Math.min(Math.max(parseInt(params.get("limit"), 10) || 120, 2), 400);
+  const res = await env.DB.prepare(
+    "SELECT as_of, rank_1500, final_score, last_price FROM ranks " +
+    "WHERE symbol = ? ORDER BY as_of DESC LIMIT ?"
+  ).bind(sym, limit).all();
+  if (!res.results.length) return json({ error: "no history for symbol", symbol: sym }, 404);
+  return json({ symbol: sym, points: res.results.reverse() }, 200, { "Cache-Control": "public, max-age=1800" });
+}
+
 export default {
+  async scheduled(event, env) {
+    const d = await loadData(env);
+    await ensureIngest(env, d);
+  },
+
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
@@ -341,12 +446,16 @@ export default {
       if (spark) return await apiSpark(spark[1]);
       if (path === "/api/today") return await apiToday(url.searchParams);
 
-      const d = await loadData(env, request);
+      const d = await loadData(env);
       if (path === "/api/summary") return json({ ...meta(d), sectors: d.sectors });
       if (path === "/api/top") return apiTop(d, url.searchParams);
       if (path === "/api/search") return apiSearch(d, url.searchParams);
       const ticker = path.match(/^\/api\/ticker\/([^/]+)$/);
       if (ticker) return apiTicker(d, ticker[1]);
+      if (path === "/api/deltas") return await apiDeltas(env, d);
+      if (path === "/api/movers") return await apiMovers(env, d, url.searchParams);
+      const hist = path.match(/^\/api\/history\/([^/]+)$/);
+      if (hist) return await apiHistory(env, d, hist[1], url.searchParams);
       const analyze = path.match(/^\/api\/analyze\/([^/]+)$/);
       if (analyze) return await apiAnalyze(env, d, analyze[1], url);
       if (path === "/api/review") return await apiReview(env, d, await request.json().catch(() => null));
@@ -363,6 +472,9 @@ export default {
             "/api/quote/:symbol",
             "/api/spark/:symbol",
             "/api/today?syms=",
+            "/api/deltas",
+            "/api/movers?days=&n=",
+            "/api/history/:symbol?limit=",
             "/api/analyze/:symbol",
             "POST /api/review {symbols}",
             "POST /api/ask {question, symbol?}",

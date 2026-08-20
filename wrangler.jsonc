@@ -14,5 +14,17 @@
   },
   "ai": {
     "binding": "AI"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rankings",
+      "database_id": "eccac776-db1d-494c-afc8-17d41b57346f"
+    }
+  ],
+  // Ingest the nightly rankings into D1 after the data workflow finishes
+  // (it runs 05:30 UTC Tue-Sat; ingest is also triggered lazily on demand).
+  "triggers": {
+    "crons": ["30 7 * * 2-6"]
   }
 }
