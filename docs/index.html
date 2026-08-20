@@ -271,6 +271,40 @@
     border-radius: 8px; color: var(--text); font-variant-numeric: tabular-nums; font-size: .84rem;
   }
 
+  /* ---------- portfolio ---------- */
+  .pfhead { padding: 20px 16px 6px; }
+  .pfhead .k { color: var(--text-3); font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; }
+  .pfhead .v { font-size: 1.9rem; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .pfhead .d { font-size: .95rem; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .pfhead .d.up { color: var(--up); } .pfhead .d.down { color: var(--down); }
+  .prow-sub { color: var(--text-2); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prow-val { text-align: right; flex: none; }
+  .prow-val .pv { font-weight: 700; font-size: .98rem; font-variant-numeric: tabular-nums; }
+  .prow-val .pd { font-size: .8rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .prow-val .pd.up { color: var(--up); } .prow-val .pd.down { color: var(--down); }
+
+  .padd {
+    display: block; width: calc(100% - 32px); margin: 4px 16px 0; padding: 12px;
+    background: var(--surface-2); color: var(--text); border: 1px dashed var(--hairline);
+    border-radius: 12px; font: 600 .9rem inherit; cursor: pointer;
+  }
+  .pform { display: flex; gap: 8px; margin: 4px 16px 0; }
+  .pform label { flex: 1; display: block; }
+  .pform .fl { color: var(--text-3); font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+  .pform input {
+    width: 100%; background: var(--surface-2); border: 1px solid var(--hairline);
+    border-radius: 10px; color: var(--text); font: 600 1rem inherit;
+    padding: 9px 10px; outline: none; font-variant-numeric: tabular-nums;
+  }
+  .pform input:focus { border-color: var(--brand); }
+  .posbtns { display: flex; gap: 8px; margin: 8px 16px 0; }
+  .posbtns button {
+    flex: 1; padding: 10px; border-radius: 10px; border: none; cursor: pointer;
+    font: 600 .88rem inherit; background: var(--surface-2); color: var(--text);
+  }
+  .posbtns .prime { background: var(--brand); color: #fff; }
+  .posbtns .danger { color: var(--down); }
+
   /* ---------- about screen ---------- */
   #about .navbar .title { padding-right: 0; margin: 0 auto; }
   .about-body { padding: 16px; color: var(--text-2); font-size: .88rem; }
@@ -342,6 +376,12 @@
     <div class="hint" style="padding:12px 16px">Every stock counts equally — no size weighting. Ranked by the average of the two VARs. Tap a sector to see its stocks.</div>
   </div>
 
+  <!-- ===== portfolio screen ===== -->
+  <div class="screen" id="portfolio" hidden>
+    <div class="navbar"><span class="title">Portfolio</span></div>
+    <div id="pfbody"></div>
+  </div>
+
   <!-- ===== about screen ===== -->
   <div class="screen" id="about" hidden>
     <div class="navbar"><span class="title">About</span></div>
@@ -388,6 +428,10 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="12" width="4" height="8"/><rect x="10" y="7" width="4" height="13"/><rect x="17" y="3" width="4" height="17"/></svg>
       Sectors
     </button>
+    <button data-screen="portfolio">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg>
+      Portfolio
+    </button>
     <button data-screen="about">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8v.01"/></svg>
       About
@@ -407,6 +451,10 @@ const INDEX_NAME = {sp500: "S&P 500", sp400: "S&P MidCap 400", sp600: "S&P Small
 const LOGO = s => "https://images.financialmodelingprep.com/symbol/" + encodeURIComponent(s.replace(".", "-")) + ".png";
 
 let DATA = null, IDX = {}, BYSYM = {}, view = "all", mode = "voladj", query = "", shown = 0, current = [];
+const POS = (() => { try { return JSON.parse(localStorage.getItem("positions") || "{}"); } catch (e) { return {}; } })();
+function savePos() { try { localStorage.setItem("positions", JSON.stringify(POS)); } catch (e) {} }
+const money = v => "$" + v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
 const WATCH = new Set((() => { try { return JSON.parse(localStorage.getItem("watch") || "[]"); } catch (e) { return []; } })());
 function saveWatch() { try { localStorage.setItem("watch", JSON.stringify([...WATCH])); } catch (e) {} }
 
@@ -766,6 +814,7 @@ function showStock(sym) {
       (g("sector") ? '<span class="badge">' + esc(g("sector")) + "</span>" : "") +
     "</div>" +
     '<div class="chartbox" id="chartbox" data-sym="' + esc(sym) + '"></div>' +
+    '<section><div class="sec-label">Position</div><div id="possec"></div></section>' +
     '<div class="hint">Tap any number to see exactly how it was calculated.</div>' +
     section("Rank", ranks) +
     section("VAR — volatility-adjusted return", vars) +
@@ -775,6 +824,8 @@ function showStock(sym) {
 
   body.querySelector(".sheader").prepend(logoEl(sym, "logo"));
   body.onclick = (e => {
+    const act = e.target.closest("[data-act]");
+    if (act) { handlePos(act.dataset.act); return; }
     const c = e.target.closest("[data-key]"); if (!c) return;
     const ex = document.getElementById("explain");
     const already = c.classList.contains("sel");
@@ -786,6 +837,51 @@ function showStock(sym) {
     const sec = c.closest("section");
     if (sec) sec.after(ex); else body.appendChild(ex);
   });
+  const posBox = () => document.getElementById("possec");
+  const renderPos = mode2 => {
+    const pos = POS[sym];
+    const last = g("last_price");
+    let h;
+    if (mode2 === "form") {
+      const sh = pos ? pos.sh : "";
+      const bp = pos ? pos.bp : last.toFixed(2);
+      h = '<div class="pform">' +
+        '<label><div class="fl">Shares</div><input id="psh" type="number" inputmode="decimal" min="0" step="any" placeholder="0" value="' + sh + '"></label>' +
+        '<label><div class="fl">Buy price</div><input id="pbp" type="number" inputmode="decimal" min="0" step="any" value="' + bp + '"></label>' +
+        "</div>" +
+        '<div class="posbtns"><button class="prime" data-act="save">Save</button><button data-act="cancel">Cancel</button></div>';
+    } else if (pos) {
+      const v = pos.sh * last, c = pos.sh * pos.bp, pl = v - c, plp = last / pos.bp - 1;
+      const cls = pl >= 0 ? "up" : "down";
+      h = '<div class="strip">' +
+        cell("Shares", pos.sh, "@ " + money(pos.bp)) +
+        cell("Value", money(v), "cost " + money(c)) +
+        cell("P&L", pctv(plp), (pl >= 0 ? "+" : "") + money(pl).replace("$-", "-$"), null, cls) +
+        "</div>" +
+        '<div class="posbtns"><button data-act="edit">Edit</button><button class="danger" data-act="remove">Remove</button></div>';
+    } else {
+      h = '<button class="padd" data-act="add">+ Add position</button>';
+    }
+    posBox().innerHTML = h;
+  };
+  const handlePos = act => {
+    if (act === "add" || act === "edit") renderPos("form");
+    else if (act === "cancel") renderPos();
+    else if (act === "save") {
+      const sh = parseFloat(document.getElementById("psh").value);
+      const bp = parseFloat(document.getElementById("pbp").value);
+      if (!(sh > 0) || !(bp > 0)) { renderPos(); return; }
+      POS[sym] = {sh, bp};
+      savePos();
+      renderPos();
+    } else if (act === "remove") {
+      delete POS[sym];
+      savePos();
+      renderPos();
+    }
+  };
+  renderPos();
+
   const star = document.getElementById("star");
   const paint = () => {
     star.textContent = WATCH.has(sym) ? "★" : "☆";
@@ -803,6 +899,50 @@ function showStock(sym) {
   loadChart(sym);
 }
 
+/* ---------- portfolio ---------- */
+function renderPortfolio() {
+  const body = document.getElementById("pfbody");
+  const syms = Object.keys(POS).filter(k => BYSYM[k]);
+  if (!syms.length) {
+    body.innerHTML = '<div class="chart-note" style="padding:36px 16px;text-align:center">No positions yet.<br>Open a stock and tap "Add position".</div>';
+    return;
+  }
+  let value = 0, cost = 0;
+  const holdings = syms.map(sym => {
+    const r = BYSYM[sym], pos = POS[sym];
+    const last = r[IDX.last_price];
+    const v = pos.sh * last, c = pos.sh * pos.bp;
+    value += v; cost += c;
+    return {sym, name: r[IDX.name], sh: pos.sh, bp: pos.bp, last, v, pl: v - c, plp: last / pos.bp - 1};
+  }).sort((a, b) => b.v - a.v);
+  const pl = value - cost, plp = cost > 0 ? value / cost - 1 : 0;
+  const cls = pl >= 0 ? "up" : "down";
+  let html =
+    '<div class="pfhead"><div class="k">Total value</div><div class="v">' + money(value) + "</div>" +
+    '<div class="d ' + cls + '">' + (pl >= 0 ? "+" : "") + money(pl).replace("$-", "-$") + " (" + pctv(plp) + ")</div></div>" +
+    '<div class="colhead" style="padding-top:10px"><span class="l">Holdings</span></div>';
+  body.innerHTML = html;
+  const frag = document.createDocumentFragment();
+  for (const h of holdings) {
+    const el = document.createElement("div");
+    el.className = "row";
+    const hc = h.pl >= 0 ? "up" : "down";
+    el.innerHTML =
+      '<div class="id"><div class="t">' + esc(h.sym) + '</div><div class="prow-sub">' + h.sh + " sh @ " + money(h.bp) + "</div></div>" +
+      '<div class="prow-val"><div class="pv">' + money(h.v) + '</div><div class="pd ' + hc + '">' +
+        (h.pl >= 0 ? "+" : "") + money(h.pl).replace("$-", "-$") + " · " + pctv(h.plp) + "</div></div>";
+    el.prepend(logoEl(h.sym, "logo"));
+    el.addEventListener("click", () => { location.hash = "#/s/" + encodeURIComponent(h.sym); });
+    frag.appendChild(el);
+  }
+  body.appendChild(frag);
+  const note = document.createElement("div");
+  note.className = "hint";
+  note.style.padding = "10px 16px";
+  note.textContent = "Prices as of " + DATA.as_of + " — values update with each nightly refresh.";
+  body.appendChild(note);
+}
+
 /* ---------- about ---------- */
 function renderAbout() {
   const c = DATA.constituent_counts;
@@ -818,8 +958,9 @@ function route() {
   const stock = h.match(/^#\/s\/(.+)$/);
   document.getElementById("stock").classList.toggle("open", !!stock);
   if (stock) { showStock(decodeURIComponent(stock[1])); return; }
-  const screen = h === "#/about" ? "about" : h === "#/sectors" ? "sectors" : "home";
-  for (const id of ["home", "sectors", "about"])
+  const screen = h === "#/about" ? "about" : h === "#/sectors" ? "sectors" : h === "#/portfolio" ? "portfolio" : "home";
+  if (screen === "portfolio" && DATA) renderPortfolio();
+  for (const id of ["home", "sectors", "portfolio", "about"])
     document.getElementById(id).hidden = screen !== id;
   for (const b of document.querySelectorAll("#tabbar button"))
     b.classList.toggle("active", b.dataset.screen === screen);
@@ -854,7 +995,7 @@ function renderSectors() {
 document.getElementById("tabbar").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   const s = b.dataset.screen;
-  location.hash = s === "about" ? "#/about" : s === "sectors" ? "#/sectors" : "#/";
+  location.hash = s === "home" ? "#/" : "#/" + s;
 });
 document.getElementById("tabs").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
