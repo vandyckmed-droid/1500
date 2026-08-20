@@ -303,6 +303,26 @@ async function apiSpark(symbol) {
 // Batched day-change quotes for the list view. Capped at 40 symbols per call
 // (the free plan allows 50 subrequests per request); each symbol's upstream
 // fetch is shared with /api/quote and /api/spark via the edge cache.
+// Parse one Yahoo chart response into a compact quote + downsampled series.
+function miniQuote(body) {
+  const r0 = body?.chart?.result?.[0];
+  const m = r0?.meta;
+  const prev = m?.chartPreviousClose ?? m?.previousClose;
+  if (m?.regularMarketPrice == null || !prev) return null;
+  const cl = (r0?.indicators?.quote?.[0]?.close || []).filter((v) => v != null);
+  const stride = Math.max(1, Math.ceil(cl.length / 20));
+  const s = [];
+  for (let i = 0; i < cl.length; i += stride) s.push(+cl[i].toFixed(2));
+  if (cl.length && s[s.length - 1] !== +cl[cl.length - 1].toFixed(2))
+    s.push(+cl[cl.length - 1].toFixed(2));
+  return {
+    p: +m.regularMarketPrice,
+    c: +((m.regularMarketPrice / prev - 1) * 100).toFixed(2),
+    prev: +(+prev).toFixed(2),
+    s,
+  };
+}
+
 async function apiToday(searchParams) {
   const syms = (searchParams.get("syms") || "")
     .split(",").map((s) => s.trim().toUpperCase()).filter(Boolean).slice(0, 40);
@@ -312,17 +332,28 @@ async function apiToday(searchParams) {
     quotes[sym] = null;
     try {
       const res = await fetch(yahooChart(sym), yahooOpts);
-      if (!res.ok) return;
-      const m = (await res.json())?.chart?.result?.[0]?.meta;
-      const prev = m?.chartPreviousClose ?? m?.previousClose;
-      if (m?.regularMarketPrice != null && prev)
-        quotes[sym] = {
-          p: +m.regularMarketPrice,
-          c: +((m.regularMarketPrice / prev - 1) * 100).toFixed(2),
-        };
+      if (res.ok) quotes[sym] = miniQuote(await res.json());
     } catch (e) {}
   }));
   return json({ quotes }, 200, { "Cache-Control": "public, max-age=60" });
+}
+
+const INDICES = [
+  ["^GSPC", "S&P 500"], ["^DJI", "Dow 30"], ["^IXIC", "Nasdaq"], ["^RUT", "Russell 2000"],
+];
+
+async function apiIndices() {
+  const out = [];
+  await Promise.all(INDICES.map(async ([sym, label], i) => {
+    try {
+      const res = await fetch(yahooChart(sym), yahooOpts);
+      if (!res.ok) return;
+      const q = miniQuote(await res.json());
+      if (q) out.push({ order: i, symbol: sym, label, ...q });
+    } catch (e) {}
+  }));
+  out.sort((a, b) => a.order - b.order);
+  return json({ indices: out }, 200, { "Cache-Control": "public, max-age=60" });
 }
 
 /* ---------- rank history (D1) ---------- */
@@ -445,6 +476,7 @@ export default {
       const spark = path.match(/^\/api\/spark\/([^/]+)$/);
       if (spark) return await apiSpark(spark[1]);
       if (path === "/api/today") return await apiToday(url.searchParams);
+      if (path === "/api/indices") return await apiIndices();
 
       const d = await loadData(env);
       if (path === "/api/summary") return json({ ...meta(d), sectors: d.sectors });
