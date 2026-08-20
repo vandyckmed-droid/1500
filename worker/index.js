@@ -29,6 +29,8 @@ const METHODOLOGY =
   "score_12 = return_12_1 / volatility_12m and score_6 = return_6_1 / volatility_6m " +
   "(volatility-adjusted return, VAR = reward per unit of risk). Every stock is ranked " +
   "by final_score, the average of score_12 and score_6; rank 1 is best of ~1500. " +
+  "All returns and volatilities in the data are decimal fractions: 0.42 means 42%, " +
+  "3.39 means 339% — convert carefully when quoting percentages. " +
   "Data is end-of-day, refreshed nightly. Write plainly for a retail user, ground every " +
   "claim in the numbers given, and never give buy/sell advice — describe, don't recommend.";
 
