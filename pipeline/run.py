@@ -83,6 +83,20 @@ def main(argv: list[str] | None = None) -> int:
     log.info("computing metrics and ranks")
     table, excluded = metrics.build_table(members, series)
     caps = prices.fetch_market_caps(table["symbol"].tolist())
+    if not caps:
+        # No keyed provider available (e.g. CI without API_KEY): carry the
+        # previous run's caps forward instead of wiping the column.
+        try:
+            prev = json.loads(Path(args.output).read_text())
+            pi = {c: n for n, c in enumerate(prev["columns"])}
+            caps = {
+                r[pi["symbol"]]: r[pi["market_cap"]]
+                for r in prev["rows"]
+                if r[pi["market_cap"]]
+            }
+            log.info("carried forward %d market caps from previous output", len(caps))
+        except (OSError, ValueError, KeyError):
+            log.warning("no market caps available and no previous output to reuse")
     table["market_cap"] = table["symbol"].map(caps)
 
     errors = validate.validate(table, members)
