@@ -266,6 +266,44 @@ async function apiAsk(env, d, body) {
   return json({ as_of: d.as_of, answer: analysis }, 200, { "Cache-Control": "no-store" });
 }
 
+async function apiSpark(symbol) {
+  const sym = decodeURIComponent(symbol).toUpperCase();
+  const ysym = sym.replace(/\./g, "-");
+  // Same URL and cache settings as apiQuote, so both share one upstream fetch.
+  const url =
+    "https://query1.finance.yahoo.com/v8/finance/chart/" +
+    encodeURIComponent(ysym) +
+    "?range=1d&interval=5m&includePrePost=false";
+  const res = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; sp1500-momentum)" },
+    cf: { cacheTtl: QUOTE_TTL_S, cacheEverything: true },
+  });
+  if (!res.ok) return json({ error: "spark unavailable", symbol: sym }, 502);
+  const body = await res.json();
+  const r0 = body?.chart?.result?.[0];
+  const m = r0?.meta;
+  const ts = r0?.timestamp || [];
+  const cl = r0?.indicators?.quote?.[0]?.close || [];
+  const times = [], closes = [];
+  for (let i = 0; i < ts.length; i++)
+    if (cl[i] != null) { times.push(ts[i]); closes.push(+cl[i].toFixed(4)); }
+  const prev = m?.chartPreviousClose ?? m?.previousClose;
+  if (closes.length < 2 || prev == null)
+    return json({ error: "spark unavailable", symbol: sym }, 502);
+  return json(
+    {
+      symbol: sym,
+      prev_close: prev,
+      price: m.regularMarketPrice ?? closes[closes.length - 1],
+      gmtoffset: m.gmtoffset ?? -14400,
+      times,
+      closes,
+    },
+    200,
+    { "Cache-Control": "public, max-age=120" }
+  );
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -280,6 +318,8 @@ export default {
     try {
       const quote = path.match(/^\/api\/quote\/([^/]+)$/);
       if (quote) return await apiQuote(quote[1]);
+      const spark = path.match(/^\/api\/spark\/([^/]+)$/);
+      if (spark) return await apiSpark(spark[1]);
 
       const d = await loadData(env, request);
       if (path === "/api/summary") return json({ ...meta(d), sectors: d.sectors });
@@ -301,6 +341,7 @@ export default {
             "/api/ticker/:symbol",
             "/api/search?q=&n=",
             "/api/quote/:symbol",
+            "/api/spark/:symbol",
             "/api/analyze/:symbol",
             "POST /api/review {symbols}",
             "POST /api/ask {question, symbol?}",

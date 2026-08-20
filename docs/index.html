@@ -705,25 +705,41 @@ const pctv = v => v == null ? "—" : (v > 0 ? "+" : "") + (v * 100).toFixed(1) 
 
 /* ---------- price chart ---------- */
 const PRICE_CACHE = {};
+const SPARK_CACHE = {};
 const PRICE_URL = s => "https://raw.githubusercontent.com/vandyckmed-droid/1500/data/" + s.replace(".", "_") + ".json";
-const RANGES = [{k: "1M", n: 22}, {k: "3M", n: 64}, {k: "6M", n: 127}, {k: "1Y", n: 0}];
+const RANGES = [{k: "1D"}, {k: "1M", n: 22}, {k: "3M", n: 64}, {k: "6M", n: 127}, {k: "1Y", n: 0}];
+const SUBS = {"1D": "today", "1M": "past month", "3M": "past 3 months", "6M": "past 6 months", "1Y": "past year"};
 
 function fetchPrices(sym) {
   if (PRICE_CACHE[sym]) return Promise.resolve(PRICE_CACHE[sym]);
   const tryUrl = url => fetch(url, {cache: "no-store"}).then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
   return tryUrl(PRICE_URL(sym)).then(d => { PRICE_CACHE[sym] = d; return d; });
 }
+function fetchSpark(sym) {
+  const c = SPARK_CACHE[sym];
+  if (c && Date.now() - c.at < 2 * 60 * 1000) return Promise.resolve(c.d);
+  return fetch(API + "/api/spark/" + encodeURIComponent(sym))
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(d => {
+      if (!d.closes || d.closes.length < 2) throw new Error("empty");
+      SPARK_CACHE[sym] = {d, at: Date.now()};
+      return d;
+    });
+}
+function timeLabel(epochSec, gmtoff) {
+  const d = new Date((epochSec + (gmtoff || 0)) * 1000);
+  const h = d.getUTCHours(), m = d.getUTCMinutes();
+  return (((h + 11) % 12) + 1) + ":" + String(m).padStart(2, "0") + (h < 12 ? " AM" : " PM");
+}
 
-function renderChart(box, data, rangeKey) {
-  const range = RANGES.find(r => r.k === rangeKey) || RANGES[3];
-  const n = range.n && range.n < data.close.length ? range.n : data.close.length;
-  const closes = data.close.slice(-n);
-  const dates = data.dates.slice(-n);
-  const first = closes[0], last = closes[closes.length - 1];
+// view: {key, closes, baseline (dashed line + delta base), sub, labelAt(i)}
+function renderChart(box, view) {
+  const closes = view.closes, rangeKey = view.key, baseline = view.baseline;
+  const first = baseline, last = closes[closes.length - 1];
   const up = last >= first;
   const col = up ? "var(--up)" : "var(--down)";
   const W = 1000, H = 380, PAD = 6;
-  let min = Math.min(...closes), max = Math.max(...closes);
+  let min = Math.min(baseline, ...closes), max = Math.max(baseline, ...closes);
   if (max === min) max = min + 1;
   const x = i => (i / (closes.length - 1)) * W;
   const y = v => PAD + (1 - (v - min) / (max - min)) * (H - 2 * PAD);
@@ -736,7 +752,7 @@ function renderChart(box, data, rangeKey) {
     '<div class="chart-readout">' +
       '<span class="cr-main" id="crMain">$' + last.toFixed(2) + "</span>" +
       '<span class="cr-delta ' + (up ? "up" : "down") + '" id="crDelta">' + pctv(delta) + "</span>" +
-      '<span class="cr-sub" id="crSub">past ' + rangeKey.replace("1M", "month").replace("3M", "3 months").replace("6M", "6 months").replace("1Y", "year") + "</span>" +
+      '<span class="cr-sub" id="crSub">' + view.sub + "</span>" +
     "</div>" +
     '<svg class="chartsvg" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
       '<defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1">' +
@@ -758,7 +774,7 @@ function renderChart(box, data, rangeKey) {
     crLine.setAttribute("visibility", "hidden"); crDot.setAttribute("visibility", "hidden");
     crMain.textContent = "$" + last.toFixed(2);
     crDelta.textContent = pctv(delta); crDelta.className = "cr-delta " + (up ? "up" : "down");
-    crSub.textContent = "past " + rangeKey.replace("1M", "month").replace("3M", "3 months").replace("6M", "6 months").replace("1Y", "year");
+    crSub.textContent = view.sub;
   };
   // Smooth scrubbing: the crosshair tracks the finger continuously (price
   // linearly interpolated between the two neighboring closes) and updates are
@@ -777,7 +793,7 @@ function renderChart(box, data, rangeKey) {
     crDot.setAttribute("cx", cx); crDot.setAttribute("cy", y(price)); crDot.setAttribute("visibility", "visible");
     crMain.textContent = "$" + price.toFixed(2);
     crDelta.textContent = pctv(d); crDelta.className = "cr-delta " + (d >= 0 ? "up" : "down");
-    crSub.textContent = day(dates[Math.round(fi)]);
+    crSub.textContent = view.labelAt(Math.round(fi));
   };
   const scrub = e => {
     pendingX = e.clientX;
@@ -790,20 +806,37 @@ function renderChart(box, data, rangeKey) {
   svg.addEventListener("pointerleave", e => { if (!e.buttons) reset(); });
   box.querySelector(".ranges").addEventListener("click", e => {
     const b = e.target.closest("button"); if (!b) return;
-    renderChart(box, data, b.dataset.range);
+    showRange(box, box.dataset.sym, b.dataset.range);
   });
+}
+
+function showRange(box, sym, key) {
+  const live = () => box.isConnected && box.dataset.sym === sym;
+  if (key === "1D") {
+    fetchSpark(sym).then(d => {
+      if (!live()) return;
+      renderChart(box, {key, closes: d.closes, baseline: d.prev_close, sub: SUBS[key],
+        labelAt: i => timeLabel(d.times[i], d.gmtoffset)});
+    }).catch(() => { if (live()) showRange(box, sym, "1Y"); });
+  } else {
+    fetchPrices(sym).then(data => {
+      if (!live()) return;
+      const range = RANGES.find(r => r.k === key) || RANGES[RANGES.length - 1];
+      const n = range.n && range.n < data.close.length ? range.n : data.close.length;
+      const closes = data.close.slice(-n), dates = data.dates.slice(-n);
+      renderChart(box, {key, closes, baseline: closes[0], sub: SUBS[key], labelAt: i => day(dates[i])});
+    }).catch(() => {
+      if (live()) box.innerHTML = '<div class="chart-note">Chart unavailable right now.</div>';
+    });
+  }
 }
 
 function loadChart(sym) {
   const box = document.getElementById("chartbox");
   if (!box) return;
   box.innerHTML = '<div class="chart-note">Loading chart&hellip;</div>';
-  fetchPrices(sym).then(data => {
-    if (!box.isConnected || box.dataset.sym !== sym) return;
-    renderChart(box, data, "1Y");
-  }).catch(() => {
-    if (box.isConnected) box.innerHTML = '<div class="chart-note">Chart unavailable right now.</div>';
-  });
+  // Yahoo-style: open on the intraday view (falls back to 1Y if unavailable).
+  showRange(box, sym, "1D");
 }
 
 function showStock(sym) {
