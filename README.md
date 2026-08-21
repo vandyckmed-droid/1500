@@ -4,7 +4,11 @@ Automated risk-adjusted momentum rankings for the **S&P Composite 1500**
 (S&P 500 + S&P MidCap 400 + S&P SmallCap 600), published as a static site via
 GitHub Pages and refreshed automatically with GitHub Actions.
 
-**Live site:** https://vandyckmed-droid.github.io/1500/
+**Live app:** https://1500.vandyck-med.workers.dev/ — an installable PWA
+(open in Safari/Chrome → Share → Add to Home Screen) with live quotes,
+intraday charts, AI analysis, rank history, and a weighted watchlist builder,
+served by a Cloudflare Worker. https://vandyckmed-droid.github.io/1500/ is a
+static mirror of the same site.
 
 ## Methodology
 
@@ -60,8 +64,9 @@ client-side. Prices are cached under `data_cache/` per end-date; use
 after the US close) and on manual dispatch: it fetches constituents and prices,
 recomputes the rankings, runs validation checks (coverage per index, value
 sanity bounds, rank integrity), commits the updated `docs/data/rankings.json`,
-and deploys `docs/` to GitHub Pages. A push to `main` redeploys the site
-without refreshing data. If validation fails, nothing is committed or deployed
+and deploys `docs/` to GitHub Pages. Cloudflare's Git integration also
+rebuilds the Worker (site + API) on every push to `main`, so both hosts stay
+in sync. A push to `main` redeploys the site without refreshing data. If validation fails, nothing is committed or deployed
 and the previous site stays up.
 
 To let CI use the keyed provider, add a repository **Actions secret** named
