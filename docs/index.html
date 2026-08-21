@@ -99,6 +99,9 @@
     max-width: 520px; margin: 0 auto; height: 100%; height: 100dvh;
     display: flex; flex-direction: column;
   }
+  @supports (-webkit-touch-callout: none) {
+    .app { height: -webkit-fill-available; }
+  }
   .content { flex: 1; position: relative; min-height: 0; overflow: hidden; }
   .screen {
     position: absolute; inset: 0; overflow-y: auto;
@@ -254,7 +257,7 @@
   .chart-readout .cr-delta { font: 500 .82rem var(--mono); }
   .chart-readout .cr-delta.up { color: var(--up); } .chart-readout .cr-delta.down { color: var(--down); }
   .chart-readout .cr-sub { color: var(--text-3); font: 400 .72rem var(--mono); margin-left: auto; }
-  .chartsvg { display: block; width: 100%; height: 190px; touch-action: pan-y; }
+  .chartsvg { display: block; width: 100%; height: clamp(190px, 28vh, 270px); touch-action: pan-y; }
   /* axis context: window high/low at the right edge, baseline price at left */
   .chwrap { position: relative; }
   .chax { position: absolute; font: 400 .62rem var(--mono); color: var(--text-3); pointer-events: none; }
@@ -423,7 +426,7 @@
   .skrow i { display: block; height: 9px; background: var(--hairline); border-radius: 2px; flex: none; }
   .skrow .a { width: 1.4em; } .skrow .b { width: 22px; height: 22px; border-radius: 50%; }
   .skrow .c { width: 34%; } .skrow .d { flex: 1; opacity: 0; } .skrow .e { width: 3.6rem; }
-  .skchart { height: 190px; position: relative; border-bottom: 1px solid var(--hairline); }
+  .skchart { height: clamp(190px, 28vh, 270px); position: relative; border-bottom: 1px solid var(--hairline); }
   .skchart::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed var(--hairline); }
   /* designed empty states: a serif title over one quiet line of guidance */
   .empty { padding: 46px 24px; text-align: center; }
@@ -1090,6 +1093,21 @@ function fetchSpark(sym) {
       return d;
     });
 }
+// The regular session (9:30–16:00 exchange time) as epoch bounds, derived
+// from the day of the first intraday bar. The 1D chart's x-axis is fixed to
+// this span, so the line grows left-to-right through the day instead of the
+// current moment always sitting at the right edge.
+function sessionSpan(times, gmtoff) {
+  if (!times || !times.length) return null;
+  const off = gmtoff ?? -14400;
+  const loc = new Date((times[0] + off) * 1000);
+  const day0 = Date.UTC(loc.getUTCFullYear(), loc.getUTCMonth(), loc.getUTCDate()) / 1000;
+  const t0 = day0 + 9.5 * 3600 - off, t1 = day0 + 16 * 3600 - off;
+  // bars outside the constructed window (odd session, bad offset) → fall
+  // back to the stretch-to-fit axis rather than clamping everything to 0
+  if (times[0] < t0 - 900 || times[times.length - 1] > t1 + 900) return null;
+  return {t0, t1};
+}
 function timeLabel(epochSec, gmtoff) {
   const d = new Date((epochSec + (gmtoff || 0)) * 1000);
   const h = d.getUTCHours(), m = d.getUTCMinutes();
@@ -1105,7 +1123,12 @@ function renderChart(box, view) {
   const W = 1000, H = 380, PAD = 6;
   let min = Math.min(baseline, ...closes), max = Math.max(baseline, ...closes);
   if (max === min) max = min + 1;
-  const x = i => (i / (closes.length - 1)) * W;
+  // Time-fixed axis when the view carries a session span (the 1D chart):
+  // x is where the bar sits in the trading day. Otherwise, stretch to fit.
+  const span = view.span && view.times && view.times.length === closes.length ? view.span : null;
+  const x = span
+    ? i => Math.max(0, Math.min(1, (view.times[i] - span.t0) / (span.t1 - span.t0))) * W
+    : i => (i / (closes.length - 1)) * W;
   const y = v => PAD + (1 - (v - min) / (max - min)) * (H - 2 * PAD);
   let path = "";
   for (let i = 0; i < closes.length; i++) path += (i ? "L" : "M") + x(i).toFixed(1) + " " + y(closes[i]).toFixed(1);
@@ -1175,10 +1198,25 @@ function renderChart(box, view) {
     raf = 0;
     const rect = svg.getBoundingClientRect();
     const frac = Math.min(1, Math.max(0, (pendingX - rect.left) / rect.width));
-    const fi = frac * (closes.length - 1);
+    let fi;
+    if (span) {
+      // finger position is a time of day; find the bar there, clamping to
+      // the data that exists so scrubbing past "now" holds the latest price
+      const tm = span.t0 + frac * (span.t1 - span.t0);
+      const ts = view.times, nT = ts.length;
+      if (tm <= ts[0]) fi = 0;
+      else if (tm >= ts[nT - 1]) fi = nT - 1;
+      else {
+        let j = 1;
+        while (ts[j] < tm) j++;
+        fi = j - 1 + (tm - ts[j - 1]) / (ts[j] - ts[j - 1]);
+      }
+    } else {
+      fi = frac * (closes.length - 1);
+    }
     const i0 = Math.floor(fi), i1 = Math.min(closes.length - 1, i0 + 1), t = fi - i0;
     const price = closes[i0] + (closes[i1] - closes[i0]) * t;
-    const cx = frac * W;
+    const cx = span ? Math.min(frac * W, x(closes.length - 1)) : frac * W;
     const d = price / first - 1;
     crLine.setAttribute("x1", cx); crLine.setAttribute("x2", cx); crLine.setAttribute("visibility", "visible");
     crDot.setAttribute("cx", cx); crDot.setAttribute("cy", y(price)); crDot.setAttribute("visibility", "visible");
@@ -1207,6 +1245,7 @@ function showRange(box, sym, key) {
     fetchSpark(sym).then(d => {
       if (!live()) return;
       renderChart(box, {key, closes: d.closes, baseline: d.prev_close, sub: SUBS[key], live: true,
+        times: d.times, span: sessionSpan(d.times, d.gmtoffset),
         labelAt: i => timeLabel(d.times[i], d.gmtoffset)});
     }).catch(() => { if (live()) showRange(box, sym, "1Y"); });
   } else {

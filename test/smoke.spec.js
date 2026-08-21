@@ -51,9 +51,11 @@ const API_STUBS = [
   [/\/api\/movers/, { up: [], down: [] }],
   [/\/api\/today/, { quotes: {} }],
   [/\/api\/spark\//, (() => {
-    // a valid intraday series so the 1D chart path renders deterministically
+    // a valid intraday series inside a real session (bars from the open),
+    // so the 1D chart's session-fixed axis path renders deterministically
+    const open = Date.UTC(2026, 7, 20, 13, 30) / 1000; // 9:30 ET, gmtoffset -14400
     const closes = [], times = [];
-    for (let i = 0; i < 30; i++) { closes.push(100 + Math.sin(i / 4) * 2); times.push(1755690000 + i * 300); }
+    for (let i = 0; i < 30; i++) { closes.push(100 + Math.sin(i / 4) * 2); times.push(open + i * 300); }
     return { closes, times, prev_close: 99.5, price: closes[29], gmtoffset: -14400 };
   })()],
   [/\/api\/history\//, { points: [] }],

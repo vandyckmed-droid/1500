@@ -292,6 +292,7 @@ export default {
           endpoints: [
             "/api/spark/:symbol",
             "/api/today?syms=",
+            "/api/indices",
             "/api/deltas",
             "/api/movers?days=&n=",
             "/api/history/:symbol?limit=",
