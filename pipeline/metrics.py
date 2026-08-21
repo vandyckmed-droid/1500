@@ -18,6 +18,10 @@ Scores:
 - Returns are annualized (x 252/window-days) before dividing by the annualized
   63-day volatility, so score_12 and score_6 share the same reward-per-risk
   units and the 50/50 composite weights the two horizons genuinely equally.
+- The score denominator is floored at 20% (max(vol, VOL_FLOOR)): a stock
+  pinned to a deal price flatlines to near-zero recent vol, which would
+  otherwise catapult dead money to the top of the ranking. volatility_63d is
+  reported raw; only the scores use the floored value.
 """
 from __future__ import annotations
 
@@ -30,6 +34,8 @@ MONTH = 21
 QUARTER = 63
 HALF_YEAR = 126
 YEAR = 252
+
+VOL_FLOOR = 0.20
 
 MIN_OBS_6M = 120
 
@@ -83,7 +89,7 @@ def compute_symbol_metrics(prices: pd.Series) -> dict | None:
     def _score(ret, window_days):
         if ret is None or vol_63 <= 0 or not math.isfinite(vol_63):
             return None
-        return (ret * YEAR / window_days) / vol_63
+        return (ret * YEAR / window_days) / max(vol_63, VOL_FLOOR)
 
     out["score_6"] = _score(out["return_6_1"], HALF_YEAR - MONTH)
     out["score_12"] = _score(out["return_12_1"], YEAR - MONTH)
@@ -91,7 +97,7 @@ def compute_symbol_metrics(prices: pd.Series) -> dict | None:
     if out["score_6"] is not None and out["score_12"] is not None:
         out["final_score"] = 0.5 * out["score_12"] + 0.5 * out["score_6"]
         avg_ret = (out["return_12_1"] + out["return_6_1"]) / 2.0
-        out["alternative_score"] = avg_ret / vol_63 if vol_63 > 0 else None
+        out["alternative_score"] = avg_ret / max(vol_63, VOL_FLOOR) if vol_63 > 0 else None
     else:
         out["final_score"] = None
         out["alternative_score"] = None

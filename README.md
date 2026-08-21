@@ -21,10 +21,12 @@ GitHub Pages and refreshed automatically with GitHub Actions.
    (the 12-1 window spans 231 trading days, the 6-1 window 105), so both
    scores share the same reward-per-risk units and the composite weights the
    two horizons equally:
-   - `score_12 = (return_12_1 × 252/231) / volatility_63d`
-   - `score_6 = (return_6_1 × 252/105) / volatility_63d`
+   - `score_12 = (return_12_1 × 252/231) / max(volatility_63d, 0.20)`
+   - `score_6 = (return_6_1 × 252/105) / max(volatility_63d, 0.20)`
    - **`final_score = 0.50 × score_12 + 0.50 × score_6`** (primary ranking)
-   - `alternative_score = ((return_12_1 + return_6_1)/2) / volatility_63d` (retained)
+   - `alternative_score = ((return_12_1 + return_6_1)/2) / max(volatility_63d, 0.20)` (retained)
+   - The 20% volatility floor stops deal-pinned flatliners (near-zero recent
+     vol) from dominating the ranking; `volatility_63d` itself is reported raw.
 6. **Ranks** — within each index and across the full S&P 1500 (rank 1 = best).
    Securities without a complete 12-month history are excluded and listed in the
    data file under `excluded`.
