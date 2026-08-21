@@ -101,6 +101,8 @@ test("momentumQuality: crafted series has known high, drawdown, up-days", () => 
   }
   const q = Stats.momentumQuality(closes);
   assert.ok(Math.abs(q.hi52 - Math.max(...closes.slice(-252))) < 1e-9);
+  assert.ok(Math.abs(q.lo52 - Math.min(...closes.slice(-252))) < 1e-9);
+  assert.ok(q.lo52 <= q.last && q.last <= q.hi52 * (1 + 1e-9));
   assert.ok(q.offHigh < 0);
   assert.ok(q.mdd < -0.3); // slid from 200 toward 122
   assert.equal(q.upTot, 63);

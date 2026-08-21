@@ -134,13 +134,15 @@
       2 * w * k * rho * sigmaB * sigmaC) - sigmaB;
   }
 
-  // Momentum quality from raw closes: distance below the 52-week high,
-  // worst 6-month peak-to-trough drawdown, share of up days over 63 sessions.
+  // Momentum quality from raw closes: distance below the 52-week high (and
+  // the 52-week range for context), worst 6-month peak-to-trough drawdown,
+  // share of up days over 63 sessions.
   function momentumQuality(closes) {
     if (!closes || closes.length < 2) return null;
     var last = closes[closes.length - 1];
     var yr = closes.slice(-YEAR);
     var hi52 = Math.max.apply(null, yr);
+    var lo52 = Math.min.apply(null, yr);
     var w6 = closes.slice(-126);
     var peak = w6[0], mdd = 0;
     for (var i = 0; i < w6.length; i++) {
@@ -151,7 +153,7 @@
     var w63 = closes.slice(-64), upDays = 0, upTot = 0;
     for (var j = 1; j < w63.length; j++) { upTot++; if (w63[j] > w63[j - 1]) upDays++; }
     return {
-      last: last, hi52: hi52, offHigh: last / hi52 - 1,
+      last: last, hi52: hi52, lo52: lo52, offHigh: last / hi52 - 1,
       mdd: mdd, upDays: upDays, upTot: upTot, upr: upTot ? upDays / upTot : null,
     };
   }
