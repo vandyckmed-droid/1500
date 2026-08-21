@@ -50,7 +50,6 @@ const API_STUBS = [
   [/\/api\/indices$/, { indices: [] }],
   [/\/api\/movers/, { up: [], down: [] }],
   [/\/api\/today/, { quotes: {} }],
-  [/\/api\/quote\//, { price: null }],
   [/\/api\/spark\//, (() => {
     // a valid intraday series so the 1D chart path renders deterministically
     const closes = [], times = [];
@@ -58,7 +57,6 @@ const API_STUBS = [
     return { closes, times, prev_close: 99.5, price: closes[29], gmtoffset: -14400 };
   })()],
   [/\/api\/history\//, { points: [] }],
-  [/\/api\/earnings\//, { symbol: "X", earnings_date: null }],
 ];
 
 const failures = [];
