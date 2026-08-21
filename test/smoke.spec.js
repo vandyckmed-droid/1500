@@ -94,10 +94,6 @@ function check(name, ok, detail) {
       body: JSON.stringify(priceSeries(m ? m[1].replace("_", ".") : "X")),
     });
   });
-  // fonts are irrelevant to the smoke and slow in CI
-  await page.route("https://fonts.googleapis.com/**", r => r.fulfill({ status: 200, contentType: "text/css", body: "" }));
-  await page.route("https://fonts.gstatic.com/**", r => r.abort());
-
   await page.addInitScript(() => {
     localStorage.setItem("watch", JSON.stringify(["SNDK", "MU", "GEO", "VSTS", "MXL"]));
     localStorage.setItem("wscheme", "equal");
@@ -108,6 +104,11 @@ function check(name, ok, detail) {
   await page.waitForSelector("#list .row", { timeout: 20000 }).catch(() => {});
   const rowCount = await page.locator("#list .row").count();
   check("rankings render", rowCount >= 60, rowCount + " rows painted");
+  const fontsLoaded = await page.evaluate(async () => {
+    await document.fonts.ready;
+    return document.fonts.check('600 16px Fraunces') && document.fonts.check('500 16px "IBM Plex Mono"');
+  });
+  check("self-hosted fonts load", fontsLoaded);
   const asof = await page.locator("#asof").textContent();
   check("as-of date shown", /^\d{4}-\d{2}-\d{2}$/.test((asof || "").trim()), asof);
 
