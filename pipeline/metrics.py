@@ -11,14 +11,13 @@ Returns:
 - return_6_1: price 21 trading days ago vs. price 126 trading days ago.
 
 Volatility:
-- std of daily simple returns over the trailing 252 (or 126) trading days,
-  annualized with sqrt(252). Sample std (ddof=1).
+- one measure throughout: std of daily simple returns over the trailing 63
+  trading days (~3 months), annualized with sqrt(252). Sample std (ddof=1).
 
 Scores:
 - Returns are annualized (x 252/window-days) before dividing by the annualized
-  volatility, so score_12 and score_6 share the same reward-per-risk units and
-  the 50/50 composite weights the two horizons genuinely equally. Without this
-  the 12-1 window (231 days) outweighs the 6-1 window (105 days) by ~2.2x.
+  63-day volatility, so score_12 and score_6 share the same reward-per-risk
+  units and the 50/50 composite weights the two horizons genuinely equally.
 """
 from __future__ import annotations
 
@@ -28,6 +27,7 @@ import numpy as np
 import pandas as pd
 
 MONTH = 21
+QUARTER = 63
 HALF_YEAR = 126
 YEAR = 252
 
@@ -64,8 +64,8 @@ def compute_symbol_metrics(prices: pd.Series) -> dict | None:
     out["price_6m_ago"] = round(p_6m, 4)
     out["date_6m_ago"] = p.index[idx_6].strftime("%Y-%m-%d")
     out["return_6_1"] = p_1m / p_6m - 1.0
-    vol_6 = float(daily.iloc[-HALF_YEAR:].std(ddof=1)) * math.sqrt(YEAR)
-    out["volatility_6m"] = vol_6
+    vol_63 = float(daily.iloc[-QUARTER:].std(ddof=1)) * math.sqrt(YEAR)
+    out["volatility_63d"] = vol_63
 
     # 12-month metrics: require a genuine 252-trading-day lookback so the
     # 12-1 window is never silently shortened for young listings.
@@ -75,27 +75,23 @@ def compute_symbol_metrics(prices: pd.Series) -> dict | None:
         out["price_12m_ago"] = round(p_12m, 4)
         out["date_12m_ago"] = p.index[idx_12].strftime("%Y-%m-%d")
         out["return_12_1"] = p_1m / p_12m - 1.0
-        vol_12 = float(daily.iloc[-YEAR:].std(ddof=1)) * math.sqrt(YEAR)
-        out["volatility_12m"] = vol_12
     else:
         out["price_12m_ago"] = None
         out["date_12m_ago"] = None
         out["return_12_1"] = None
-        out["volatility_12m"] = None
 
-    def _score(ret, vol, window_days):
-        if ret is None or vol is None or vol <= 0 or not math.isfinite(vol):
+    def _score(ret, window_days):
+        if ret is None or vol_63 <= 0 or not math.isfinite(vol_63):
             return None
-        return (ret * YEAR / window_days) / vol
+        return (ret * YEAR / window_days) / vol_63
 
-    out["score_6"] = _score(out["return_6_1"], out["volatility_6m"], HALF_YEAR - MONTH)
-    out["score_12"] = _score(out["return_12_1"], out["volatility_12m"], YEAR - MONTH)
+    out["score_6"] = _score(out["return_6_1"], HALF_YEAR - MONTH)
+    out["score_12"] = _score(out["return_12_1"], YEAR - MONTH)
 
     if out["score_6"] is not None and out["score_12"] is not None:
         out["final_score"] = 0.5 * out["score_12"] + 0.5 * out["score_6"]
         avg_ret = (out["return_12_1"] + out["return_6_1"]) / 2.0
-        avg_vol = (out["volatility_12m"] + out["volatility_6m"]) / 2.0
-        out["alternative_score"] = avg_ret / avg_vol if avg_vol > 0 else None
+        out["alternative_score"] = avg_ret / vol_63 if vol_63 > 0 else None
     else:
         out["final_score"] = None
         out["alternative_score"] = None
@@ -161,8 +157,7 @@ def build_table(
     numeric = [
         "return_12_1",
         "return_6_1",
-        "volatility_12m",
-        "volatility_6m",
+        "volatility_63d",
         "score_12",
         "score_6",
         "final_score",

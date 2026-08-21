@@ -25,10 +25,12 @@ const METHODOLOGY =
   "You are the built-in analyst of an S&P 1500 momentum-rankings app. " +
   "Methodology: return_12_1 is the price change from 12 months ago to 1 month ago " +
   "(the latest month is skipped on purpose, standard momentum practice); return_6_1 " +
-  "is the same over 6 months. Volatility is annualized from daily swings. " +
-  "score_12 = return_12_1 / volatility_12m and score_6 = return_6_1 / volatility_6m " +
-  "(volatility-adjusted return, VAR = reward per unit of risk). Every stock is ranked " +
-  "by final_score, the average of score_12 and score_6; rank 1 is best of ~1500. " +
+  "is the same over 6 months. volatility_63d is the one volatility measure used " +
+  "everywhere: daily swings over the last 63 trading days, annualized. " +
+  "score_12 = (return_12_1 x 252/231) / volatility_63d and " +
+  "score_6 = (return_6_1 x 252/105) / volatility_63d " +
+  "(volatility-adjusted return, VAR = annualized reward per unit of risk). Every stock " +
+  "is ranked by final_score, the average of score_12 and score_6; rank 1 is best of ~1500. " +
   "All returns and volatilities in the data are decimal fractions: 0.42 means 42%, " +
   "3.39 means 339% — convert carefully when quoting percentages. " +
   "Data is end-of-day, refreshed nightly. Write plainly for a retail user, ground every " +
@@ -223,7 +225,7 @@ async function apiReview(env, d, body) {
       symbol: s.symbol, name: s.name, sector: s.sector, index: s.index,
       rank_1500: s.rank_1500, final_score: s.final_score,
       return_12_1: s.return_12_1, return_6_1: s.return_6_1,
-      volatility_12m: s.volatility_12m, market_cap: s.market_cap,
+      volatility_63d: s.volatility_63d, market_cap: s.market_cap,
     };
   });
   if (!rows.length) return json({ error: "no known symbols", symbols: syms }, 404);

@@ -14,16 +14,17 @@ GitHub Pages and refreshed automatically with GitHub Actions.
 3. **Returns** (trading-day windows: 1m = 21, 6m = 126, 12m = 252 days)
    - `return_12_1` = P(t−21) / P(t−252) − 1 — 12-month return excluding the most recent month
    - `return_6_1` = P(t−21) / P(t−126) − 1 — 6-month return excluding the most recent month
-4. **Volatility** — sample std of daily adjusted returns, annualized:
-   `vol = std(daily_returns) × sqrt(252)`, over trailing 252d (12m) and 126d (6m) windows.
+4. **Volatility** — one measure throughout: sample std of daily adjusted
+   returns over the trailing 63 trading days (~3 months), annualized:
+   `volatility_63d = std(daily_returns) × sqrt(252)`.
 5. **Scores** — returns are annualized to match the annualized volatility
    (the 12-1 window spans 231 trading days, the 6-1 window 105), so both
    scores share the same reward-per-risk units and the composite weights the
    two horizons equally:
-   - `score_12 = (return_12_1 × 252/231) / volatility_12m`
-   - `score_6 = (return_6_1 × 252/105) / volatility_6m`
+   - `score_12 = (return_12_1 × 252/231) / volatility_63d`
+   - `score_6 = (return_6_1 × 252/105) / volatility_63d`
    - **`final_score = 0.50 × score_12 + 0.50 × score_6`** (primary ranking)
-   - `alternative_score = ((return_12_1 + return_6_1)/2) / ((volatility_12m + volatility_6m)/2)` (retained)
+   - `alternative_score = ((return_12_1 + return_6_1)/2) / volatility_63d` (retained)
 6. **Ranks** — within each index and across the full S&P 1500 (rank 1 = best).
    Securities without a complete 12-month history are excluded and listed in the
    data file under `excluded`.

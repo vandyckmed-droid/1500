@@ -435,10 +435,8 @@
           <input id="search" type="search" placeholder="Symbol or company" autocomplete="off">
         </label>
         <div class="seg" id="seg">
-          <button data-mode="voladj" class="active">VAR</button>
-          <button data-mode="ret">Return</button>
+          <button data-mode="voladj" class="active">Avg VAR</button>
           <button data-mode="vol">Vol</button>
-          <button data-mode="mcap">MCap</button>
           <button data-mode="today">Today</button>
         </div>
       </div>
@@ -465,7 +463,7 @@
   <!-- ===== sectors screen ===== -->
   <div class="screen" id="sectors" hidden>
     <div class="navbar"><span class="title">Sectors</span></div>
-    <div class="colhead" style="padding-top:10px"><span class="l">Equal-weighted VAR</span><span class="m">12-1</span><span class="m">6-1</span></div>
+    <div class="colhead" style="padding-top:10px"><span class="l">Equal-weighted</span><span class="m">AVG VAR</span></div>
     <div id="seclist"></div>
     <div class="hint" style="padding:12px 16px">Every stock counts equally — no size weighting. Ranked by the average of the two VARs. Tap a sector to see its stocks.</div>
   </div>
@@ -479,8 +477,8 @@
       <p>All S&amp;P 1500 stocks (the S&amp;P 500, MidCap 400 and SmallCap 600 together), ranked by risk-adjusted momentum — best first. Updated automatically every trading night.</p>
       <h3>How the numbers work</h3>
       <p><b>12-1 / 6-1 return</b> — how much the stock moved over the past 12 or 6 months, skipping the most recent month.</p>
-      <p><b>Volatility</b> — how bumpy the ride was, from daily price swings, annualized.</p>
-      <p><b>VAR (volatility-adjusted return)</b> — return divided by volatility: reward per unit of risk. The list is ordered by <b>Avg. VAR</b>, the average of the 12-1 and 6-1 VARs.</p>
+      <p><b>Volatility</b> — how bumpy the ride has been over the last 63 trading days (~3 months), from daily price swings, annualized. One measure, used everywhere.</p>
+      <p><b>VAR (volatility-adjusted return)</b> — annualized return divided by volatility: reward per unit of risk. The list is ordered by <b>Avg VAR</b>, the average of the 12-1 and 6-1 VARs.</p>
       <h3>Appearance</h3>
       <div class="seg" id="modeseg" style="display:inline-flex">
         <button data-mode="auto">Auto</button>
@@ -546,10 +544,8 @@
 <script>
 "use strict";
 const MODES = {
-  voladj: {label: "VAR — reward per risk", cols: ["score_12", "score_6"], fmt: v => v.toFixed(2), signed: true},
-  ret:    {label: "Return (12-1 / 6-1)", cols: ["return_12_1", "return_6_1"], fmt: v => (v > 0 && v < 10 ? "+" : "") + (v * 100).toFixed(0) + "%", signed: true},
-  vol:    {label: "Annualized volatility", cols: ["volatility_12m", "volatility_6m"], fmt: v => (v * 100).toFixed(0) + "%", signed: false},
-  mcap:   {label: "Market cap — largest first", cols: ["market_cap", null], fmt: v => v >= 1e12 ? "$" + (v / 1e12).toFixed(2) + "T" : v >= 1e9 ? "$" + (v / 1e9).toFixed(v < 1e10 ? 1 : 0) + "B" : "$" + (v / 1e6).toFixed(0) + "M", signed: false, heads: ["MCAP", ""]},
+  voladj: {label: "Avg VAR — reward per unit of risk", col: "final_score", head: "AVG VAR", fmt: v => v.toFixed(2), signed: true},
+  vol:    {label: "Volatility — annualized, 63-day", col: "volatility_63d", head: "VOL 63D", fmt: v => (v * 100).toFixed(0) + "%", signed: false},
   today:  {label: "Today — live, top 100 by rank", heads: ["PRICE", "TODAY"]},
 };
 const PAGE = 80;
@@ -723,10 +719,7 @@ function rowsFor() {
       String(r[IDX.name]).toLowerCase().includes(q) ||
       String(r[IDX.sector]).toLowerCase().includes(q));
   }
-  if (mode === "mcap") {
-    const i = IDX.market_cap;
-    rs = rs.slice().sort((a, b) => (b[i] || 0) - (a[i] || 0));
-  } else if (mode === "today") {
+  if (mode === "today") {
     rs = rs.slice(0, 100);
     const chg = r => { const t = TODAYQ[r[IDX.symbol]]; return t && t.q ? t.q.c : -1e9; };
     rs = rs.slice().sort((a, b) => chg(b) - chg(a));
@@ -786,9 +779,8 @@ function render(reset) {
       (dl ? '<span class="rdel ' + (dl > 0 ? "up" : "down") + '">' + (dl > 0 ? "▲" : "▼") + Math.abs(dl) + "</span>" : "") +
       '</div><div class="n">' + esc(r[IDX.name]) + "</div></div>" +
       (mode === "today" ? todayChips(sym)
-        : showW
-          ? '<span class="chip wchip">' + (WMAP && WMAP[sym] != null ? (WMAP[sym] * 100).toFixed(1) + "%" : "&hellip;") + "</span>" + chip(r[IDX[cfg.cols[0]]], cfg)
-          : chip(r[IDX[cfg.cols[0]]], cfg) + (cfg.cols[1] ? chip(r[IDX[cfg.cols[1]]], cfg) : '<span class="chip flat"></span>')) +
+        : (showW ? '<span class="chip wchip">' + (WMAP && WMAP[sym] != null ? (WMAP[sym] * 100).toFixed(1) + "%" : "&hellip;") + "</span>" : "") +
+          chip(r[IDX[cfg.col]], cfg)) +
       '<button class="rstar' + (on ? " on" : "") + '" aria-label="watchlist">' + (on ? "★" : "☆") + "</button>";
     el.prepend(logoEl(sym, "logo"));
     el.querySelector(".rstar").addEventListener("click", e => {
@@ -825,8 +817,8 @@ function render(reset) {
   } else rev.hidden = true;
   document.getElementById("modelabel").textContent = cfg.label;
   if (mode === "today" && current.length) ensureToday(current.map(r => r[IDX.symbol]));
-  let heads = cfg.heads || ["12M", "6M"];
-  if (showW) heads = ["WEIGHT", heads[0] || "12M"];
+  let heads = cfg.heads || [cfg.head, ""];
+  if (showW) heads = ["WEIGHT", cfg.head];
   document.getElementById("col1").textContent = heads[0];
   document.getElementById("col2").textContent = heads[1];
   const wbar = document.getElementById("wbar");
@@ -854,18 +846,15 @@ function explainFor(g, key) {
     case "r6":
       return "Same idea over a shorter window: from 6 months ago to 1 month ago, skipping the most recent month." +
         '<span class="math">' + $(g("price_6m_ago")) + " (" + day(g("date_6m_ago")) + ") → " + $(g("price_1m_ago")) + " (" + day(g("date_1m_ago")) + ") = <b>" + pct1(g("return_6_1")) + "</b></span>";
-    case "v12":
-      return "How bumpy the ride has been: the typical size of the stock's day-to-day moves over the last 12 months, scaled up to a yearly figure (× √252, the number of trading days in a year). Higher = wilder swings." +
-        '<span class="math">daily swings over 12 months × √252 = <b>' + (g("volatility_12m") * 100).toFixed(1) + "%</b></span>";
-    case "v6":
-      return "Same bumpiness measure over just the last 6 months." +
-        '<span class="math">daily swings over 6 months × √252 = <b>' + (g("volatility_6m") * 100).toFixed(1) + "%</b></span>";
+    case "v63":
+      return "How bumpy the ride has been lately: the typical size of the stock's day-to-day moves over the last 63 trading days (~3 months), scaled up to a yearly figure (× √252). One volatility measure is used everywhere. Higher = wilder swings." +
+        '<span class="math">daily swings over 63 days × √252 = <b>' + (g("volatility_63d") * 100).toFixed(1) + "%</b></span>";
     case "s12":
-      return "Volatility-adjusted return: the 12-1 return, annualized (× 252⁄231) so both windows share the same units, divided by the 12-month volatility. A big gain achieved smoothly scores higher than the same gain with wild swings." +
-        '<span class="math">' + pct1(g("return_12_1")) + " × 252⁄231 ÷ " + (g("volatility_12m") * 100).toFixed(1) + "% = <b>" + g("score_12").toFixed(2) + "</b></span>";
+      return "Volatility-adjusted return: the 12-1 return, annualized (× 252⁄231) so both windows share the same units, divided by the 63-day volatility. A big gain achieved smoothly scores higher than the same gain with wild swings." +
+        '<span class="math">' + pct1(g("return_12_1")) + " × 252⁄231 ÷ " + (g("volatility_63d") * 100).toFixed(1) + "% = <b>" + g("score_12").toFixed(2) + "</b></span>";
     case "s6":
-      return "Volatility-adjusted return for the shorter window: the 6-1 return, annualized (× 252⁄105), divided by the 6-month volatility." +
-        '<span class="math">' + pct1(g("return_6_1")) + " × 252⁄105 ÷ " + (g("volatility_6m") * 100).toFixed(1) + "% = <b>" + g("score_6").toFixed(2) + "</b></span>";
+      return "Volatility-adjusted return for the shorter window: the 6-1 return, annualized (× 252⁄105), divided by the same 63-day volatility." +
+        '<span class="math">' + pct1(g("return_6_1")) + " × 252⁄105 ÷ " + (g("volatility_63d") * 100).toFixed(1) + "% = <b>" + g("score_6").toFixed(2) + "</b></span>";
   }
   return "";
 }
@@ -1077,9 +1066,8 @@ function showStock(sym) {
       cell("6-1", pctv(g("return_6_1")), "", "r6", signCls(g("return_6_1"))) +
     "</div>";
   const vols =
-    '<div class="strip two">' +
-      cell("12M", (g("volatility_12m") * 100).toFixed(1) + "%", "", "v12", "") +
-      cell("6M", (g("volatility_6m") * 100).toFixed(1) + "%", "", "v6", "") +
+    '<div class="strip" style="grid-template-columns:1fr">' +
+      cell("63-day, annualized", (g("volatility_63d") * 100).toFixed(1) + "%", "", "v63", "") +
     "</div>";
 
   body.innerHTML =
@@ -1096,7 +1084,7 @@ function showStock(sym) {
     section("Rank", ranks) +
     section("VAR — volatility-adjusted return", vars) +
     section("Return (skips latest month)", rets) +
-    section("Volatility (annualized)", vols) +
+    section("Volatility", vols) +
     section("Rank history", '<div id="rkhist" class="chart-note" style="padding:4px 16px 0">Loading&hellip;</div>') +
     section("About the company", '<div id="aico"></div>') +
     '<div class="explain" id="explain" hidden></div>';
@@ -1196,7 +1184,7 @@ function watchWeights(syms) {
   if (WSCHEME === "invvol") {
     const iv = syms.map(s => {
       const r = BYSYM[s];
-      const v = r ? (r[IDX.volatility_12m] || r[IDX.volatility_6m]) : null;
+      const v = r ? r[IDX.volatility_63d] : null;
       return v && v > 0 ? 1 / v : 0;
     });
     const tot = iv.reduce((a, b) => a + b, 0);
@@ -1295,8 +1283,7 @@ const AB = {univ: "all", n: 10, sector: "", vol: 0, mcap: 0, cap: 0, corr: 0, mo
 const ABOPTS = [
   ["univ", "Universe", [["all", "All 1500"], ["sp500", "S&P 500"], ["sp400", "Mid 400"], ["sp600", "Small 600"]]],
   ["n", "How many stocks", [[5, "5"], [10, "10"], [15, "15"], [20, "20"]]],
-  ["vol", "Max volatility (12M)", [[0, "Any"], [0.4, "≤40%"], [0.6, "≤60%"]]],
-  ["mcap", "Min market cap", [[0, "Any"], [2e9, "$2B+"], [10e9, "$10B+"], [50e9, "$50B+"]]],
+  ["vol", "Max volatility (63-day)", [[0, "Any"], [0.4, "≤40%"], [0.6, "≤60%"]]],
   ["cap", "Max per sector", [[0, "Any"], [1, "1"], [2, "2"], [3, "3"]]],
   ["corr", "Max pairwise correlation", [[0, "Any"], [0.8, "≤0.80"], [0.65, "≤0.65"], [0.5, "≤0.50"]]],
   ["mode", "Fill mode", [["replace", "Replace list"], ["add", "Add to list"]]],
@@ -1384,8 +1371,7 @@ async function runAB() {
       if (C.mode === "add" && WATCH.has(sym)) continue;
       if (C.univ !== "all" && r[IDX.index] !== C.univ) continue;
       if (C.sector && r[IDX.sector] !== C.sector) continue;
-      if (C.vol && (r[IDX.volatility_12m] || 99) > C.vol) continue;
-      if (C.mcap && (r[IDX.market_cap] || 0) < C.mcap) continue;
+      if (C.vol && (r[IDX.volatility_63d] || 99) > C.vol) continue;
       const sec = r[IDX.sector] || "?";
       if (C.cap && (perSector[sec] || 0) >= C.cap) continue;
       if (C.corr && admitted.length) {
@@ -1424,7 +1410,7 @@ async function runAB() {
       : "") +
     picks.map(r =>
       '<div class="abprev"><div class="id"><div class="t">' + esc(r[IDX.symbol]) + '</div><div class="n">' + esc(r[IDX.name]) + "</div></div>" +
-      '<span class="m">#' + r[IDX.rank_1500] + " · vol " + Math.round((r[IDX.volatility_12m] || 0) * 100) + "%</span></div>").join("") +
+      '<span class="m">#' + r[IDX.rank_1500] + " · vol " + Math.round((r[IDX.volatility_63d] || 0) * 100) + "%</span></div>").join("") +
     '<button class="abbtn" id="abapply">' + (C.mode === "replace" ? "Replace watchlist" : "Add to watchlist") + "</button>";
   document.getElementById("abapply").addEventListener("click", () => {
     if (C.mode === "replace") WATCH.clear();
@@ -1591,7 +1577,7 @@ function renderSectors() {
       '<div class="sic" style="background:hsl(' + meta.h + ' 30% 20%)">' +
         '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="hsl(' + meta.h + ' 65% 68%)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + meta.d + "</svg></div>" +
       '<div class="id"><div class="t">' + esc(s.sector) + '</div><div class="n">#' + s.rank + " · " + s.count + " stocks</div></div>" +
-      chip(s.score_12, MODES.voladj) + chip(s.score_6, MODES.voladj);
+      chip(s.final_score, MODES.voladj);
     el.addEventListener("click", () => {
       document.getElementById("search").value = s.sector;
       query = s.sector;
