@@ -756,7 +756,7 @@ function setLiveOK(ok) {
   LIVEOK = ok;
   const el = document.getElementById("livestatus");
   if (el) el.hidden = ok;
-  if (mode === "today") render(true);
+  if (mode === "today") scheduleRender();
 }
 function ensureToday(syms, cb) {
   const stale = syms.filter(s => !TODAYQ[s] || Date.now() - TODAYQ[s].at > 60 * 1000);
@@ -774,7 +774,7 @@ function ensureToday(syms, cb) {
   )).finally(() => {
     todayFetching = false;
     setLiveOK(stale.some(s => TODAYQ[s] && TODAYQ[s].q));
-    if (mode === "today") render(true);
+    if (mode === "today") scheduleRender();
     todayCbs.splice(0).forEach(f => { try { f(); } catch (e) {} });
   });
 }
@@ -828,7 +828,7 @@ async function computeBasket(syms, key, w) {
     if (run !== basketRun) return;
     BASKET = {key, sigma: null, ret: "err", busy: false};
   }
-  if (view === "watch" || mode === "beta") render(true);
+  if (view === "watch" || mode === "beta") scheduleRender();
 }
 
 function statsVsBasket(m) {
@@ -860,7 +860,7 @@ async function ensureBetas(syms) {
   } finally {
     BETA.busy = false;
   }
-  if (mode === "beta") render(true);
+  if (mode === "beta") scheduleRender();
 }
 
 function betaChips(sym) {
@@ -876,6 +876,15 @@ function betaChips(sym) {
   const bCls = st.beta < 1 ? "up" : st.beta > 1 ? "down" : "flat";
   return '<span class="chip ' + dvCls + '">' + dvTxt + "</span>" +
     '<span class="chip ' + bCls + '">' + st.beta.toFixed(2).replace("-", "−") + "</span>";
+}
+
+// Async completions (basket, betas, HRP, pair corr, the live-data flag)
+// coalesce into one repaint per animation frame instead of one each.
+let renderQueued = false;
+function scheduleRender() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; render(true); });
 }
 
 let MAGP = 0; // 95th-percentile value of the current list, for magnitude bars
@@ -1446,7 +1455,7 @@ async function computeHRP(syms, key) {
   } catch (e) {
     HRPW = {key, w: "err", busy: false};
   }
-  if (view === "watch" || mode === "beta") render(true);
+  if (view === "watch" || mode === "beta") scheduleRender();
 }
 
 // Watchlist portfolio stats — computed, not guessed. The headline is the
@@ -1492,7 +1501,7 @@ async function computePairCorr(syms, key) {
   } catch (e) {
     PSTAT = {key, corr: null, busy: false};
   }
-  if (view === "watch") render(true);
+  if (view === "watch") scheduleRender();
 }
 
 document.getElementById("wseg").addEventListener("click", e => {

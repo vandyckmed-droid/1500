@@ -75,6 +75,16 @@ function check(name, ok, detail) {
   const pageErrors = [];
   page.on("pageerror", e => pageErrors.push(String(e.message)));
 
+  // Boot-weight budget: everything the shell needs before data (page, script,
+  // fonts, icons) must stay under 320 KB on the wire. Data files are exempt —
+  // they are the product.
+  let bootBytes = 0;
+  page.on("response", async r => {
+    const u = new URL(r.url());
+    if (u.hostname !== "localhost" || u.pathname.includes("/data/")) return;
+    try { bootBytes += (await r.body()).length; } catch (e) {}
+  });
+
   await page.route(API + "/**", route => {
     const path = new URL(route.request().url()).pathname;
     const hit = API_STUBS.find(([re]) => re.test(path));
@@ -145,7 +155,11 @@ function check(name, ok, detail) {
   const advisory = await page.waitForSelector("#livestatus:not([hidden])", { timeout: 15000 }).catch(() => null);
   check("live-data advisory shows when quotes are down", !!advisory);
 
-  // 6. No uncaught errors anywhere along the way
+  // 6. The shell stays light: uncompressed boot payload under budget
+  check("boot weight within budget", bootBytes > 0 && bootBytes < 320 * 1024,
+    Math.round(bootBytes / 1024) + " KB shell (budget 320)");
+
+  // 7. No uncaught errors anywhere along the way
   check("no page errors", pageErrors.length === 0, pageErrors.join(" | "));
 
   await browser.close();
