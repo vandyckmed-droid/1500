@@ -1194,24 +1194,17 @@ async function computeHRP(syms, key) {
   if (HRPW.busy) return;
   HRPW = {key, w: null, busy: true};
   try {
-    const series = await Promise.all(syms.map(s => fetchPrices(s).catch(() => null)));
+    // Same per-symbol daily log-return maps the correlation gate uses.
+    const series = await Promise.all(syms.map(retSeries));
     const okIdx = [], maps = [];
-    series.forEach((d, i) => {
-      if (d && d.close && d.close.length > 40) {
-        const m = {}; d.dates.forEach((dt, j) => m[dt] = d.close[j]);
-        okIdx.push(i); maps.push(m);
-      }
-    });
+    series.forEach((m, i) => { if (m) { okIdx.push(i); maps.push(m); } });
     if (okIdx.length < 2) throw new Error("insufficient data");
     let dates = Object.keys(maps[0]);
     for (let k = 1; k < maps.length; k++) dates = dates.filter(dt => dt in maps[k]);
     dates.sort();
-    dates = dates.slice(-127); // ~6 months of overlapping days
+    dates = dates.slice(-126); // ~6 months of overlapping days
     if (dates.length < 40) throw new Error("insufficient overlap");
-    const rets = maps.map(m => {
-      const r = []; for (let j = 1; j < dates.length; j++) r.push(Math.log(m[dates[j]] / m[dates[j - 1]]));
-      return r;
-    });
+    const rets = maps.map(m => dates.map(dt => m[dt]));
     const nA = rets.length, T = rets[0].length;
     const mean = rets.map(r => r.reduce((a, b) => a + b, 0) / T);
     const cov = Array.from({length: nA}, () => new Array(nA));
@@ -1260,6 +1253,7 @@ async function computeHRP(syms, key) {
     const tot = w.reduce((a, b) => a + b, 0);
     const out = {};
     okIdx.forEach((origI, k) => { out[syms[origI]] = w[k] / tot; });
+    for (const s of syms) if (!(s in out)) out[s] = 0; // no price data: sized at zero, not stuck loading
     HRPW = {key, w: out, busy: false};
   } catch (e) {
     HRPW = {key, w: "err", busy: false};
@@ -1286,19 +1280,26 @@ const ABOPTS = [
   ["mode", "Fill mode", [["replace", "Replace list"], ["add", "Add to list"]]],
 ];
 
-// Daily log-return map per symbol (session-cached), for correlation gating.
+// Daily log-return map per symbol, session-cached — failures cache as null so
+// a symbol with no price file is fetched at most once. Shared by the
+// correlation gate and HRP.
 const RETS = {};
 async function retSeries(sym) {
-  if (RETS[sym]) return RETS[sym];
-  const d = await fetchPrices(sym);
-  const m = {};
-  const from = Math.max(1, d.close.length - 140);
-  for (let j = from; j < d.close.length; j++)
-    m[d.dates[j]] = Math.log(d.close[j] / d.close[j - 1]);
-  RETS[sym] = m;
-  return m;
+  if (sym in RETS) return RETS[sym];
+  try {
+    const d = await fetchPrices(sym);
+    const m = {};
+    const from = Math.max(1, d.close.length - 140);
+    for (let j = from; j < d.close.length; j++)
+      m[d.dates[j]] = Math.log(d.close[j] / d.close[j - 1]);
+    RETS[sym] = Object.keys(m).length > 40 ? m : null;
+  } catch (e) {
+    RETS[sym] = null;
+  }
+  return RETS[sym];
 }
 function corrOf(a, b) {
+  if (!a || !b) return null;
   const dates = Object.keys(a).filter(dt => dt in b);
   if (dates.length < 40) return null;
   const n = dates.length;
@@ -1314,6 +1315,7 @@ function corrOf(a, b) {
 }
 
 function buildAB() {
+  abRunId++; // rebuilding the sheet orphans any in-flight run
   const body = document.getElementById("abbody");
   const secs = (DATA.sectors || []).map(s => s.sector).sort();
   body.innerHTML =
@@ -1335,54 +1337,65 @@ function buildAB() {
   document.getElementById("abrun").addEventListener("click", runAB);
 }
 
+let abRunId = 0; // invalidates in-flight runs when the sheet is rebuilt or rerun
 async function runAB() {
+  const C = {...AB}; // snapshot: option taps mid-run must not change this run
+  const myId = ++abRunId;
   const btn = document.getElementById("abrun");
   const pv = document.getElementById("abpreview");
+  const alive = () => myId === abRunId && pv.isConnected;
   btn.disabled = true;
+  const CAP = 200;
   const picks = [];
   const perSector = {};
   const skipped = [];
   // Greedy correlation gate: a candidate must not correlate above the cap
   // with anything already admitted (including the current list in add mode).
-  const admitted = AB.mode === "add" ? [...WATCH] : [];
-  let checked = 0;
+  const admitted = C.mode === "add" ? [...WATCH] : [];
+  let checked = 0, truncated = false;
   try {
+    if (C.corr && admitted.length) await Promise.all(admitted.map(retSeries)); // warm in parallel
     for (const r of DATA.rows) {
-      if (picks.length >= AB.n) break;
+      if (!alive()) return;
+      if (picks.length >= C.n) break;
       const sym = r[IDX.symbol];
-      if (AB.mode === "add" && WATCH.has(sym)) continue;
-      if (AB.univ !== "all" && r[IDX.index] !== AB.univ) continue;
-      if (AB.sector && r[IDX.sector] !== AB.sector) continue;
-      if (AB.vol && (r[IDX.volatility_12m] || 99) > AB.vol) continue;
-      if (AB.mcap && (r[IDX.market_cap] || 0) < AB.mcap) continue;
+      if (C.mode === "add" && WATCH.has(sym)) continue;
+      if (C.univ !== "all" && r[IDX.index] !== C.univ) continue;
+      if (C.sector && r[IDX.sector] !== C.sector) continue;
+      if (C.vol && (r[IDX.volatility_12m] || 99) > C.vol) continue;
+      if (C.mcap && (r[IDX.market_cap] || 0) < C.mcap) continue;
       const sec = r[IDX.sector] || "?";
-      if (AB.cap && (perSector[sec] || 0) >= AB.cap) continue;
-      if (AB.corr && admitted.length) {
-        if (++checked > 200) break; // hard cap on price-history fetches
+      if (C.cap && (perSector[sec] || 0) >= C.cap) continue;
+      if (C.corr && admitted.length) {
+        if (++checked > CAP) { truncated = true; break; }
         pv.innerHTML = '<div class="chart-note" style="padding:8px 16px">Checking correlations&hellip; ' +
           picks.length + " picked, " + checked + " examined</div>";
+        const cand = await retSeries(sym); // null (no data) passes the gate
         let worst = null;
-        try {
-          const cand = await retSeries(sym);
-          for (const a of admitted) {
-            const c = corrOf(cand, await retSeries(a).catch(() => ({})));
-            if (c != null && c > AB.corr && (!worst || c > worst.c)) worst = {s: a, c};
-          }
-        } catch (e) { /* no price data for candidate: let it through */ }
+        for (const a of admitted) {
+          const c = corrOf(cand, await retSeries(a));
+          if (c != null && c > C.corr && (!worst || c > worst.c)) worst = {s: a, c};
+        }
         if (worst) { skipped.push(sym + " (" + worst.c.toFixed(2) + " vs " + worst.s + ")"); continue; }
       }
       perSector[sec] = (perSector[sec] || 0) + 1;
       picks.push(r);
       admitted.push(sym);
     }
-  } finally { btn.disabled = false; }
+  } finally { if (btn.isConnected) btn.disabled = false; }
+  if (!alive()) return;
   if (!picks.length) {
-    pv.innerHTML = '<div class="chart-note" style="padding:8px 16px">No stocks pass those filters — loosen something and run again.</div>';
+    pv.innerHTML = '<div class="chart-note" style="padding:8px 16px">' +
+      (truncated
+        ? "Nothing found within the first " + CAP + " candidates — raise the correlation cap or tighten other filters."
+        : "No stocks pass those filters — loosen something and run again.") + "</div>";
     return;
   }
   pv.innerHTML =
     '<div class="sec-label">Result · ' + picks.length + " stocks" +
-    (picks.length < AB.n ? " (fewer than requested passed the filters)" : "") + "</div>" +
+    (picks.length < C.n
+      ? (truncated ? " (search stopped at " + CAP + " candidates)" : " (fewer than requested passed the filters)")
+      : "") + "</div>" +
     (skipped.length
       ? '<div class="chart-note" style="padding:0 16px 6px">Skipped as too correlated: ' +
         esc(skipped.slice(0, 8).join(", ")) + (skipped.length > 8 ? " +" + (skipped.length - 8) + " more" : "") + "</div>"
@@ -1390,9 +1403,9 @@ async function runAB() {
     picks.map(r =>
       '<div class="abprev"><div class="id"><div class="t">' + esc(r[IDX.symbol]) + '</div><div class="n">' + esc(r[IDX.name]) + "</div></div>" +
       '<span class="m">#' + r[IDX.rank_1500] + " · vol " + Math.round((r[IDX.volatility_12m] || 0) * 100) + "%</span></div>").join("") +
-    '<button class="abbtn" id="abapply">' + (AB.mode === "replace" ? "Replace watchlist" : "Add to watchlist") + "</button>";
+    '<button class="abbtn" id="abapply">' + (C.mode === "replace" ? "Replace watchlist" : "Add to watchlist") + "</button>";
   document.getElementById("abapply").addEventListener("click", () => {
-    if (AB.mode === "replace") WATCH.clear();
+    if (C.mode === "replace") WATCH.clear();
     picks.forEach(r => WATCH.add(r[IDX.symbol]));
     saveWatch();
     document.getElementById("absheet").classList.remove("open");
@@ -1532,6 +1545,7 @@ function route() {
   const h = location.hash;
   const stock = h.match(/^#\/s\/(.+)$/);
   document.getElementById("stock").classList.toggle("open", !!stock);
+  document.getElementById("absheet").classList.remove("open");
   if (stock) { showStock(decodeURIComponent(stock[1])); return; }
   const screen = h === "#/about" ? "about" : h === "#/sectors" ? "sectors" :
     h === "#/rankings" ? "home" : "dash";
