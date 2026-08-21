@@ -138,7 +138,13 @@ function check(name, ok, detail) {
   }, { timeout: 15000 }).catch(() => null);
   check("beta column fills from matrix", !!betaFilled);
 
-  // 5. No uncaught errors anywhere along the way
+  // 5. Honest failure: the stubs return empty live data, so the dashboard
+  // must say so instead of showing silent dashes
+  await page.evaluate(() => { location.hash = "#/"; });
+  const advisory = await page.waitForSelector("#livestatus:not([hidden])", { timeout: 15000 }).catch(() => null);
+  check("live-data advisory shows when quotes are down", !!advisory);
+
+  // 6. No uncaught errors anywhere along the way
   check("no page errors", pageErrors.length === 0, pageErrors.join(" | "));
 
   await browser.close();
