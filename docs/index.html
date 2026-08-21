@@ -36,9 +36,6 @@
     --baseline: #3a4046;
     --glow-up: rgba(0,200,5,.4);
     --glow-down: rgba(255,80,0,.4);
-    /* pills keep the vivid brand colors in both modes */
-    --pill-up: #00c805; --pill-up-fg: #002b01;
-    --pill-down: #ff5000; --pill-down-fg: #2e0c00;
     --chip-w: 4.3rem;
     --tabbar-h: calc(52px + env(safe-area-inset-bottom));
   }
@@ -156,17 +153,18 @@
     color: var(--text-3); font-size: .66rem; font-weight: 500;
     font-variant-numeric: tabular-nums;
   }
-  /* sector symbol: minimalist line glyph on a muted sector-tinted disc */
+  /* sector symbol: pure pen strokes — a faint wide underlay beneath a crisp
+     line gives ink depth without any disc or plate */
   .sic {
-    width: 30px; height: 30px; border-radius: 50%; flex: none;
+    width: 30px; height: 30px; flex: none;
     display: flex; align-items: center; justify-content: center;
-    background: hsl(var(--sh, 210) 30% 17%);
-    color: hsl(var(--sh, 210) 55% 66%);
+    color: hsl(var(--sh, 210) 40% 60%);
   }
+  .sic .u { opacity: .22; }
   @media (prefers-color-scheme: light) {
-    body:not([data-mode="dark"]) .sic { background: hsl(var(--sh, 210) 45% 92%); color: hsl(var(--sh, 210) 50% 34%); }
+    body:not([data-mode="dark"]) .sic { color: hsl(var(--sh, 210) 50% 38%); }
   }
-  body[data-mode="light"] .sic { background: hsl(var(--sh, 210) 45% 92%); color: hsl(var(--sh, 210) 50% 34%); }
+  body[data-mode="light"] .sic { color: hsl(var(--sh, 210) 50% 38%); }
   .id { flex: 1; min-width: 0; }
   .id .t { font-weight: 600; font-size: .93rem; letter-spacing: .01em; }
   .rstar {
@@ -232,11 +230,7 @@
   .sheader .sic { width: 52px; height: 52px; }
   .sheader .t { font-size: 1.25rem; font-weight: 700; }
   .sheader .n { color: var(--text-2); font-size: .85rem; }
-  .badges { display: flex; gap: 6px; padding: 10px 16px 2px; flex-wrap: wrap; }
-  .badge {
-    background: var(--surface-2); color: var(--text-2); border-radius: 999px;
-    padding: 4px 11px; font-size: .72rem; font-weight: 600;
-  }
+  .badges { padding: 8px 16px 0; color: var(--text-2); font-size: .8rem; font-weight: 600; }
   /* ---------- price chart ---------- */
   .chartbox { margin: 4px 16px 0; }
   .chart-readout { display: flex; align-items: baseline; gap: 8px; min-height: 22px; padding: 2px 0 4px; }
@@ -297,22 +291,9 @@
     border-radius: 8px; color: var(--text); font-variant-numeric: tabular-nums; font-size: .84rem;
   }
 
-  /* ---------- AI ---------- */
-  .aibtn {
-    display: block; width: calc(100% - 32px); margin: 0 16px; padding: 12px; min-height: 44px;
-    background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px;
-    color: var(--text); font: 700 .88rem inherit; cursor: pointer;
-  }
-  .aibtn:disabled { color: var(--text-3); }
-  .aibox {
-    margin: 0 16px; padding: 13px 14px; background: var(--surface);
-    border: 1px solid var(--hairline); border-left: 3px solid #e7a93c;
-    border-radius: 12px; font-size: .86rem; color: var(--text); line-height: 1.5;
-  }
-  .aifoot { color: var(--text-3); font-size: .68rem; margin-top: 9px; }
-  #aireview { margin: 10px 0 2px; }
-  #aireview[hidden] { display: none; }
-  .about-body .aibtn, .about-body .aibox { width: 100%; margin: 0; }
+  /* ---------- watchlist portfolio stats ---------- */
+  #wstats { margin: 10px 0 2px; }
+  #wstats[hidden] { display: none; }
 
   /* ---------- dashboard (Today) ---------- */
   .mktline { padding: 10px 16px 2px; color: var(--text-3); font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
@@ -325,10 +306,10 @@
   .ixcard .d.up { color: var(--up); } .ixcard .d.down { color: var(--down); }
   .ixcard svg { display: block; width: 100%; height: 26px; margin-top: 4px; }
   .mspark { flex: none; width: 84px; height: 32px; }
-  .pill { flex: none; min-width: 62px; text-align: center; border-radius: 8px; padding: 5px 6px; font-weight: 700; font-size: .8rem; font-variant-numeric: tabular-nums; }
-  .pill.up { background: var(--pill-up); color: var(--pill-up-fg); }
-  .pill.down { background: var(--pill-down); color: var(--pill-down-fg); }
-  .pill.flat { background: var(--flat-bg); color: var(--text-2); }
+  .pill { flex: none; min-width: 62px; text-align: right; padding: 2px 0; font-weight: 700; font-size: .84rem; font-variant-numeric: tabular-nums; }
+  .pill.up { color: var(--up); }
+  .pill.down { color: var(--down); }
+  .pill.flat { color: var(--text-2); }
   .dprice { flex: none; text-align: right; }
   .dprice .p { font-weight: 700; font-size: .92rem; font-variant-numeric: tabular-nums; }
   .rmov { display: flex; align-items: center; gap: 10px; margin: 0; padding: 9px 16px; border-top: 1px solid var(--hairline); cursor: pointer; }
@@ -462,7 +443,7 @@
       </div>
       <button class="abbtn sec" id="abopen" style="margin-top:8px">⚙ Auto-build this watchlist&hellip;</button>
     </div>
-    <div id="aireview" hidden></div>
+    <div id="wstats" hidden></div>
     <div class="list" id="list"></div>
     <button class="more" id="more" hidden>Show more</button>
   </div>
@@ -492,12 +473,6 @@
         <button data-mode="dark">Dark</button>
         <button data-mode="light">Light</button>
       </div>
-      <h3>Ask the AI</h3>
-      <label class="search" style="margin:4px 0 8px">
-        <input id="askin" type="text" placeholder="e.g. Which sector leads and why?" autocomplete="off">
-      </label>
-      <button class="aibtn" id="askbtn">Ask</button>
-      <div id="askout" style="margin-top:10px"></div>
       <h3>Fine print</h3>
       <p>Research use only — not investment advice. Data may contain errors.</p>
     </div>
@@ -563,7 +538,7 @@ const SECTOR_SHORT = {
   "Communication Services": "Comm Svcs", "Industrials": "Industrials",
   "Real Estate": "Real Estate", "Materials": "Materials", "Energy": "Energy", "Utilities": "Utilities",
 };
-// Quotes and AI are served by the Cloudflare Worker; on the GitHub Pages
+// Quotes and history are served by the Cloudflare Worker; on the GitHub Pages
 // mirror the API lives cross-origin (the Worker sends open CORS headers).
 const API = location.hostname.endsWith("workers.dev") ? "" : "https://1500.vandyck-med.workers.dev";
 
@@ -572,9 +547,8 @@ let DELTAS = null; // symbol -> rank change vs previous day (positive = climbed)
 const WATCH = new Set((() => { try { return JSON.parse(localStorage.getItem("watch") || "[]"); } catch (e) { return []; } })());
 function saveWatch() {
   try { localStorage.setItem("watch", JSON.stringify([...WATCH])); } catch (e) {}
-  const rev = document.getElementById("aireview");
-  if (rev) { rev.dataset.ready = ""; rev.innerHTML = ""; }
   HRPW = {key: "", w: null, busy: false}; // weights are stale once the list changes
+  PSTAT = {key: "", corr: undefined, busy: false}; // so is the pairwise correlation
 }
 
 // appearance boot (before first paint of content): auto = follow the system
@@ -631,35 +605,22 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && DATA && Date.now() - lastFetch > 5 * 60 * 1000) loadData(false);
 });
 
-/* ---------- AI (Workers AI via the app's own API) ---------- */
-function aiButton(container, label, getText) {
-  container.innerHTML = '<button class="aibtn">✦  ' + esc(label) + "</button>";
-  const btn = container.querySelector(".aibtn");
-  btn.onclick = () => {
-    btn.disabled = true; btn.textContent = "Thinking…";
-    getText().then(t => {
-      container.innerHTML = '<div class="aibox">' + esc(t) +
-        '<div class="aifoot">AI-generated from the app’s data · not investment advice</div></div>';
-    }).catch(() => {
-      btn.disabled = false; btn.textContent = "Unavailable — tap to retry";
-    });
-  };
-}
-const aiJson = (url, opts) => fetch(url, opts).then(r => r.json());
-
 /* ---------- helpers ---------- */
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 }
-// Minimalist sector symbol: line glyph on a muted sector-tinted disc.
-// Mode-appropriate colors come from CSS via the --sh hue variable.
+// Minimalist sector symbol: pure pen strokes, no disc or plate. The glyph is
+// drawn twice — a wide faint underlay beneath a crisp line — so the ink has
+// depth; the muted sector hue comes from CSS via the --sh variable.
 function sectorIcon(sector, size) {
   const meta = SECTOR_ICONS[sector] || {h: 210, d: '<path d="M4 17l5-6 4 3 7-9"/>'};
   const el = document.createElement("div");
   el.className = "sic";
   el.style.setProperty("--sh", meta.h);
-  const s = size || 15;
-  el.innerHTML = '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + meta.d + "</svg>";
+  const s = size || 19;
+  el.innerHTML = '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">' +
+    '<g class="u" stroke-width="3.4">' + meta.d + "</g>" +
+    '<g stroke-width="1.6">' + meta.d + "</g></svg>";
   return el;
 }
 function chip(v, cfg) {
@@ -787,18 +748,11 @@ function render(reset) {
     list.innerHTML = '<div class="chart-note" style="padding:28px 16px;text-align:center">Nothing here yet. Open a stock and tap the ☆ to add it to your watchlist.</div>';
   }
   document.getElementById("more").hidden = shown >= current.length;
-  const rev = document.getElementById("aireview");
+  const wst = document.getElementById("wstats");
   if (view === "watch" && current.length && !query) {
-    rev.hidden = false;
-    if (!rev.dataset.ready) {
-      rev.dataset.ready = "1";
-      aiButton(rev, "Review my watchlist", () =>
-        aiJson(API + "/api/review", {
-          method: "POST", headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({symbols: [...WATCH]}),
-        }).then(d => { if (!d.analysis) throw 0; return d.analysis; }));
-    }
-  } else rev.hidden = true;
+    wst.hidden = false;
+    renderPortfolioStats(wst, current);
+  } else wst.hidden = true;
   document.getElementById("modelabel").textContent = cfg.label;
   if (mode === "today" && current.length) ensureToday(current.map(r => r[IDX.symbol]));
   let heads = cfg.heads || ["", ""]; // single-value modes: the label is the header
@@ -845,6 +799,18 @@ function explainFor(g, key) {
       return "Volatility-adjusted return for the shorter window: the 6-1 return, annualized (× 252⁄105), divided by the same 63-day volatility" + (floored ? " (floored at 20%)" : "") + "." +
         '<span class="math">' + pct1(g("return_6_1")) + " × 252⁄105 ÷ " + (fv * 100).toFixed(1) + "% = <b>" + g("score_6").toFixed(2) + "</b></span>";
     }
+    case "qhigh":
+      if (!MQ) return "";
+      return "How far the latest close sits below the stock's highest close of the past year. Strong momentum names tend to keep pressing new highs; a deep gap below the high often means the trend has already been broken." +
+        '<span class="math">' + $(MQ.last) + " vs " + $(MQ.hi52) + " high = <b>" + pct1(MQ.offHigh) + "</b></span>";
+    case "qdd":
+      if (!MQ) return "";
+      return "The worst peak-to-trough slide over the past 6 months. Two stocks with the same return can get there very differently — a shallow drawdown means the gains came without a gut-check along the way, and shallow-drawdown momentum has tended to hold up better." +
+        '<span class="math"><b>' + pct1(MQ.mdd) + "</b> at its worst</span>";
+    case "qup":
+      if (!MQ || MQ.upr == null) return "";
+      return "The share of the last 63 trading days that closed higher than the day before. A steady drip of small gains (55%+) is usually a healthier trend than the same return delivered by a few violent jumps." +
+        '<span class="math">' + MQ.upDays + " of " + MQ.upTot + " days closed up = <b>" + Math.round(MQ.upr * 100) + "%</b></span>";
   }
   return "";
 }
@@ -1030,6 +996,53 @@ function loadChart(sym) {
   showRange(box, sym, "1D");
 }
 
+// Momentum quality — computed from the same daily price archive the charts
+// use: distance below the 52-week high, worst 6-month drawdown, and the share
+// of up days over the last 63 sessions. Real numbers that speak to whether the
+// trend is intact, not generated prose.
+let MQ = null;
+function renderMQ(sym, body) {
+  fetchPrices(sym).then(d => {
+    const el = document.getElementById("mq");
+    if (!el || body.dataset.sym !== sym) return;
+    const closes = d.close;
+    const last = closes[closes.length - 1];
+    const hi52 = Math.max(...closes.slice(-252));
+    const offHigh = last / hi52 - 1;
+    const w6 = closes.slice(-126);
+    let peak = w6[0], mdd = 0;
+    for (const c of w6) { if (c > peak) peak = c; mdd = Math.min(mdd, c / peak - 1); }
+    const w63 = closes.slice(-64);
+    let upDays = 0, upTot = 0;
+    for (let i = 1; i < w63.length; i++) { upTot++; if (w63[i] > w63[i - 1]) upDays++; }
+    const upr = upTot ? upDays / upTot : null;
+    MQ = {sym, last, hi52, offHigh, mdd, upDays, upTot, upr};
+    el.className = "";
+    el.style.padding = "0";
+    el.innerHTML =
+      '<div class="strip">' +
+        cell("Off 52-wk high", pctv(offHigh), "", "qhigh", offHigh <= -0.15 ? "down" : "") +
+        cell("6-mo drawdown", pctv(mdd), "", "qdd", mdd <= -0.2 ? "down" : "") +
+        cell("Up days, 63d", upr != null ? Math.round(upr * 100) + "%" : "&mdash;", "", "qup", "") +
+      "</div>" +
+      '<div class="chart-note" id="mqearn" hidden style="padding:8px 16px 0"></div>';
+    // Next earnings date (shown only when the API can serve a current one).
+    fetch(API + "/api/earnings/" + encodeURIComponent(sym))
+      .then(r => (r.ok ? r.json() : null)).then(e => {
+        if (!e || !e.earnings_date || body.dataset.sym !== sym) return;
+        const dte = new Date(e.earnings_date + "T00:00:00Z");
+        if (isNaN(dte) || dte < new Date(Date.now() - 5 * 86400e3)) return;
+        const box = document.getElementById("mqearn");
+        if (!box) return;
+        box.textContent = "Next earnings report: " + day(e.earnings_date);
+        box.hidden = false;
+      }).catch(() => {});
+  }).catch(() => {
+    const el = document.getElementById("mq");
+    if (el && body.dataset.sym === sym) el.textContent = "No daily price history available for this symbol.";
+  });
+}
+
 function showStock(sym) {
   const r = BYSYM[sym];
   const panel = document.getElementById("stock");
@@ -1075,15 +1088,13 @@ function showStock(sym) {
     section("VAR — volatility-adjusted return", vars) +
     section("Return (skips latest month)", rets) +
     section("Volatility", vols) +
+    section("Momentum quality", '<div id="mq" class="chart-note" style="padding:4px 16px 8px">Loading&hellip;</div>') +
     section("Rank history", '<div id="rkhist" class="chart-note" style="padding:4px 16px 0">Loading&hellip;</div>') +
-    section("About the company", '<div id="aico"></div>') +
     '<div class="explain" id="explain" hidden></div>';
 
   body.dataset.sym = sym;
-  body.querySelector(".sheader").prepend(sectorIcon(g("sector"), 24));
-  aiButton(document.getElementById("aico"), "What does this company do?", () =>
-    aiJson(API + "/api/analyze/" + encodeURIComponent(sym))
-      .then(d => { if (!d.analysis) throw 0; return d.analysis; }));
+  body.querySelector(".sheader").prepend(sectorIcon(g("sector"), 26));
+  renderMQ(sym, body);
   // Rank-over-time line from D1 history (rank 1 plotted at the top).
   fetch(API + "/api/history/" + encodeURIComponent(sym) + "?limit=180")
     .then(r => (r.ok ? r.json() : null)).then(h => {
@@ -1257,6 +1268,52 @@ async function computeHRP(syms, key) {
     HRPW = {key, w: out, busy: false};
   } catch (e) {
     HRPW = {key, w: "err", busy: false};
+  }
+  if (view === "watch") render(true);
+}
+
+// Watchlist portfolio stats — computed, not guessed: concentration (effective
+// number of names = 1/Σw²), weighted 63-day volatility, and the average
+// pairwise correlation over ~6 months of daily returns.
+let PSTAT = {key: "", corr: undefined, busy: false};
+function renderPortfolioStats(box, rows) {
+  const syms = rows.map(r => r[IDX.symbol]);
+  const w = watchWeights(syms); // null while HRP computes; render re-runs when it lands
+  let effN = null, wvol = null;
+  if (w) {
+    let s2 = 0, vv = 0, vw = 0;
+    for (const s of syms) {
+      const wi = w[s] || 0;
+      s2 += wi * wi;
+      const r = BYSYM[s], v = r ? r[IDX.volatility_63d] : null;
+      if (v != null) { vv += wi * v; vw += wi; }
+    }
+    effN = s2 > 0 ? 1 / s2 : null;
+    wvol = vw > 0 ? vv / vw : null;
+  }
+  const key = syms.slice().sort().join(",");
+  if (syms.length >= 2 && syms.length <= 30 && PSTAT.key !== key && !PSTAT.busy) computePairCorr(syms, key);
+  const corr = syms.length < 2 || syms.length > 30 ? null : PSTAT.key === key ? PSTAT.corr : undefined;
+  box.innerHTML =
+    '<div class="strip">' +
+      cell("Names", String(syms.length), effN != null && syms.length > 1 ? "effective " + effN.toFixed(1) : "&nbsp;") +
+      cell("Wtd volatility", wvol != null ? (wvol * 100).toFixed(1) + "%" : "&hellip;", "63-day, annualized") +
+      cell("Avg pair corr", corr === undefined ? "&hellip;" : corr === null ? "&mdash;" : corr.toFixed(2), "~6 mo daily returns") +
+    "</div>";
+}
+async function computePairCorr(syms, key) {
+  PSTAT = {key, corr: undefined, busy: true};
+  try {
+    const series = await Promise.all(syms.map(retSeries));
+    const maps = series.filter(Boolean);
+    let s = 0, n = 0;
+    for (let i = 0; i < maps.length; i++) for (let j = i + 1; j < maps.length; j++) {
+      const c = corrOf(maps[i], maps[j]);
+      if (c != null) { s += c; n++; }
+    }
+    PSTAT = {key, corr: n ? s / n : null, busy: false};
+  } catch (e) {
+    PSTAT = {key, corr: null, busy: false};
   }
   if (view === "watch") render(true);
 }
@@ -1592,27 +1649,6 @@ const SECTOR_ICONS = {
   "Consumer Discretionary": {h: 300, d: '<path d="M6 8h12l-1.2 12H7.2L6 8z"/><path d="M9 8a3 3 0 0 1 6 0"/>'},
   "Consumer Staples": {h: 130, d: '<circle cx="9.5" cy="20" r="1"/><circle cx="16.5" cy="20" r="1"/><path d="M3 4h2l3 12h10l2-8H7"/>'},
 };
-
-/* ---------- ask the AI ---------- */
-const askbtn = document.getElementById("askbtn"), askin = document.getElementById("askin");
-function runAsk() {
-  const q = askin.value.trim();
-  if (!q || askbtn.disabled) return;
-  askbtn.disabled = true; askbtn.textContent = "Thinking…";
-  askin.blur();
-  aiJson(API + "/api/ask", {
-    method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({question: q}),
-  }).then(d => {
-    document.getElementById("askout").innerHTML = d.answer
-      ? '<div class="aibox">' + esc(d.answer) + '<div class="aifoot">AI-generated from the app’s data · not investment advice</div></div>'
-      : '<div class="chart-note">No answer right now — try again in a minute.</div>';
-  }).catch(() => {
-    document.getElementById("askout").innerHTML = '<div class="chart-note">No answer right now — try again in a minute.</div>';
-  }).finally(() => { askbtn.disabled = false; askbtn.textContent = "Ask"; });
-}
-askbtn.addEventListener("click", runAsk);
-askin.addEventListener("keydown", e => { if (e.key === "Enter") runAsk(); });
 
 /* ---------- events ---------- */
 document.getElementById("tabbar").addEventListener("click", e => {

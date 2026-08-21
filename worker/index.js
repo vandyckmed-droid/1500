@@ -8,10 +8,7 @@
 //   GET /api/ticker/:symbol     → one row + rank context
 //   GET /api/search?q=&n=       → symbol/name/sector match, columnar
 //   GET /api/quote/:symbol      → intraday quote proxied from Yahoo Finance
-//   GET /api/analyze/:symbol    → AI explanation of what the company does
-//                                 (Workers AI, cached per symbol per as_of day)
-//   POST /api/review            → {symbols: [...]} AI watchlist review
-//   POST /api/ask               → {question, symbol?} AI Q&A about the rankings
+//   GET /api/earnings/:symbol → next estimated earnings date (Nasdaq, 24h cache)
 //
 // Columnar responses reuse rankings.json's {columns, rows} shape so clients
 // can share one column-index decoder for slim and full payloads.
@@ -20,23 +17,6 @@ const DATA_TTL_MS = 5 * 60 * 1000;
 const QUOTE_TTL_S = 60;
 const MAX_N = 1500;
 
-const AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-const METHODOLOGY =
-  "You are the built-in analyst of an S&P 1500 momentum-rankings app. " +
-  "Methodology: return_12_1 is the price change from 12 months ago to 1 month ago " +
-  "(the latest month is skipped on purpose, standard momentum practice); return_6_1 " +
-  "is the same over 6 months. volatility_63d is the one volatility measure used " +
-  "everywhere: daily swings over the last 63 trading days, annualized. " +
-  "score_12 = (return_12_1 x 252/231) / max(volatility_63d, 0.20) and " +
-  "score_6 = (return_6_1 x 252/105) / max(volatility_63d, 0.20) — the 20% floor " +
-  "keeps deal-pinned flatliners from dominating " +
-  "(volatility-adjusted return, VAR = annualized reward per unit of risk). Stocks whose " +
-  "21-day vol is under 6% are excluded as pinned to an acquisition price. Every stock " +
-  "is ranked by final_score, the average of score_12 and score_6; rank 1 is best of ~1500. " +
-  "All returns and volatilities in the data are decimal fractions: 0.42 means 42%, " +
-  "3.39 means 339% — convert carefully when quoting percentages. " +
-  "Data is end-of-day, refreshed nightly. Write plainly for a retail user, ground every " +
-  "claim in the numbers given, and never give buy/sell advice — describe, don't recommend.";
 
 let cached = { data: null, at: 0 };
 
@@ -164,117 +144,6 @@ async function apiQuote(symbol) {
   );
 }
 
-const rowObj = (d, row) => Object.fromEntries(d.columns.map((c, i) => [c, row[i]]));
-
-async function aiRun(env, messages, maxTokens) {
-  if (!env.AI) throw new Error("AI binding not configured");
-  const out = await env.AI.run(AI_MODEL, { messages, max_tokens: maxTokens });
-  const text = (out && (out.response || "")).trim();
-  if (!text) throw new Error("empty AI response");
-  return text;
-}
-
-async function apiAnalyze(env, d, symbol, requestUrl) {
-  const sym = decodeURIComponent(symbol).toUpperCase();
-  const row = d.rows.find((r) => r[d._col.symbol] === sym);
-  if (!row) return json({ error: "unknown symbol", symbol: sym }, 404);
-
-  // The description is stable; cache one per symbol per as_of day (v2: company
-  // explainer replaced the ranking explainer — the bump skips stale v1 entries).
-  const cacheKey = new Request(
-    new URL("/api/analyze/" + encodeURIComponent(sym) + "?v=2&as_of=" + d.as_of, requestUrl)
-  );
-  const hit = await caches.default.match(cacheKey);
-  if (hit) return hit;
-
-  const s = rowObj(d, row);
-  const analysis = await aiRun(env, [
-    {
-      role: "system",
-      content:
-        "You are the built-in explainer of a stock-rankings app. Describe companies " +
-        "plainly for a retail user with no jargon. Never give buy/sell advice.",
-    },
-    {
-      role: "user",
-      content:
-        "In 90-140 words of flowing prose (no headings or bullets), explain what " +
-        "this company actually does: what it makes or sells, who its customers are, " +
-        "and how it makes money. If you are not fully certain about this specific " +
-        "company, stick to what its name, sector, and size imply and keep it " +
-        "general rather than inventing specifics.\n" +
-        "Company: " + s.name + " (ticker " + s.symbol + ")\n" +
-        "Sector: " + s.sector + " | Index: " + s.index +
-        (s.market_cap ? " | Market cap: $" + Math.round(s.market_cap / 1e6) + "M" : ""),
-    },
-  ], 350);
-
-  const res = json({ symbol: sym, as_of: d.as_of, analysis }, 200, {
-    "Cache-Control": "public, max-age=86400",
-  });
-  await caches.default.put(cacheKey, res.clone());
-  return res;
-}
-
-async function apiReview(env, d, body) {
-  const syms = Array.isArray(body && body.symbols)
-    ? [...new Set(body.symbols.map((s) => String(s).toUpperCase()))].slice(0, 30)
-    : [];
-  if (!syms.length) return json({ error: "symbols array required" }, 400);
-  const rows = d.rows.filter((r) => syms.includes(r[d._col.symbol])).map((r) => {
-    const s = rowObj(d, r);
-    return {
-      symbol: s.symbol, name: s.name, sector: s.sector, index: s.index,
-      rank_1500: s.rank_1500, final_score: s.final_score,
-      return_12_1: s.return_12_1, return_6_1: s.return_6_1,
-      volatility_63d: s.volatility_63d, market_cap: s.market_cap,
-    };
-  });
-  if (!rows.length) return json({ error: "no known symbols", symbols: syms }, 404);
-  const analysis = await aiRun(env, [
-    { role: "system", content: METHODOLOGY },
-    {
-      role: "user",
-      content:
-        "Review this watchlist in 130-180 words as short flowing prose (no headings " +
-        "or bullets). Cover: how it tilts by sector and size, which names are the " +
-        "momentum leaders and laggards within it, and anything notable about its " +
-        "overall risk (volatility) profile. Data as of " + d.as_of +
-        " (rank is out of " + d.rows.length + "):\n" + JSON.stringify(rows),
-    },
-  ], 450);
-  return json({ as_of: d.as_of, count: rows.length, analysis }, 200, {
-    "Cache-Control": "no-store",
-  });
-}
-
-async function apiAsk(env, d, body) {
-  const question = String((body && body.question) || "").trim().slice(0, 500);
-  if (!question) return json({ error: "question required" }, 400);
-  let stockCtx = "";
-  if (body && body.symbol) {
-    const row = d.rows.find((r) => r[d._col.symbol] === String(body.symbol).toUpperCase());
-    if (row) stockCtx = "\nStock in view: " + JSON.stringify(rowObj(d, row));
-  }
-  const top = d.rows.slice(0, 20).map((r) => {
-    const s = rowObj(d, r);
-    return { symbol: s.symbol, name: s.name, sector: s.sector, rank: s.rank_1500, final_score: s.final_score };
-  });
-  const analysis = await aiRun(env, [
-    { role: "system", content: METHODOLOGY },
-    {
-      role: "user",
-      content:
-        "Answer the user's question in at most 120 words of plain prose. If the " +
-        "question cannot be answered from the app's data or methodology, say so " +
-        "briefly. Data as of " + d.as_of + ". Sector overview: " +
-        JSON.stringify(d.sectors || []) + "\nCurrent top 20: " + JSON.stringify(top) +
-        stockCtx + "\n\nQuestion: " + question,
-    },
-  ], 350);
-  return json({ as_of: d.as_of, answer: analysis }, 200, { "Cache-Control": "no-store" });
-}
-
 async function apiSpark(symbol) {
   const sym = decodeURIComponent(symbol).toUpperCase();
   const res = await fetch(yahooChart(sym), yahooOpts);
@@ -358,6 +227,27 @@ async function apiIndices() {
   }));
   out.sort((a, b) => a.order - b.order);
   return json({ indices: out }, 200, { "Cache-Control": "public, max-age=60" });
+}
+
+// Next estimated earnings date, scraped from Nasdaq's analyst API and cached
+// a day at the edge. Returns {earnings_date: null} when Nasdaq has no date or
+// blocks the request, so clients can hide the row.
+async function apiEarnings(symbol) {
+  const sym = decodeURIComponent(symbol).toUpperCase();
+  let date = null;
+  try {
+    const res = await fetch("https://api.nasdaq.com/api/analyst/" + encodeURIComponent(sym) + "/earnings-date", {
+      headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
+      cf: { cacheTtl: 86400, cacheEverything: true },
+    });
+    if (res.ok) {
+      const d = await res.json();
+      const txt = (d?.data?.reportText || "") + " " + (d?.data?.announcement || "");
+      const m = txt.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      if (m) date = m[3] + "-" + m[1] + "-" + m[2];
+    }
+  } catch (e) {}
+  return json({ symbol: sym, earnings_date: date }, 200, { "Cache-Control": "public, max-age=86400" });
 }
 
 /* ---------- rank history (D1) ---------- */
@@ -488,9 +378,7 @@ export default {
 
     if (!path.startsWith("/api/")) return env.ASSETS.fetch(request);
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
-    const isPost = path === "/api/review" || path === "/api/ask";
-    if (request.method !== (isPost ? "POST" : "GET"))
-      return json({ error: isPost ? "POST only" : "GET only" }, 405);
+    if (request.method !== "GET") return json({ error: "GET only" }, 405);
 
     try {
       const quote = path.match(/^\/api\/quote\/([^/]+)$/);
@@ -499,6 +387,8 @@ export default {
       if (spark) return await apiSpark(spark[1]);
       if (path === "/api/today") return await apiToday(url.searchParams);
       if (path === "/api/indices") return await apiIndices();
+      const earn = path.match(/^\/api\/earnings\/([^/]+)$/);
+      if (earn) return await apiEarnings(earn[1]);
 
       const d = await loadData(env);
       if (path === "/api/summary") return json({ ...meta(d), sectors: d.sectors });
@@ -510,10 +400,6 @@ export default {
       if (path === "/api/movers") return await apiMovers(env, d, url.searchParams);
       const hist = path.match(/^\/api\/history\/([^/]+)$/);
       if (hist) return await apiHistory(env, d, hist[1], url.searchParams);
-      const analyze = path.match(/^\/api\/analyze\/([^/]+)$/);
-      if (analyze) return await apiAnalyze(env, d, analyze[1], url);
-      if (path === "/api/review") return await apiReview(env, d, await request.json().catch(() => null));
-      if (path === "/api/ask") return await apiAsk(env, d, await request.json().catch(() => null));
 
       return json(
         {
@@ -529,9 +415,7 @@ export default {
             "/api/deltas",
             "/api/movers?days=&n=",
             "/api/history/:symbol?limit=",
-            "/api/analyze/:symbol",
-            "POST /api/review {symbols}",
-            "POST /api/ask {question, symbol?}",
+            "/api/earnings/:symbol",
           ],
         },
         404
