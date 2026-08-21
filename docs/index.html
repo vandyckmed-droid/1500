@@ -38,6 +38,7 @@
     --baseline: #3a4046;
     --glow-up: rgba(0,200,5,.4);
     --glow-down: rgba(255,80,0,.4);
+    --logo-disc: #d8dbde;
     /* pills keep the vivid brand colors in both modes */
     --pill-up: #00c805; --pill-up-fg: #002b01;
     --pill-down: #ff5000; --pill-down-fg: #2e0c00;
@@ -57,6 +58,7 @@
       --nav-bg: rgba(255,255,255,.92); --tabbar-bg: rgba(250,250,251,.92);
       --tile: #ffffff; --seg-active: #ffffff; --baseline: #c3c9cf;
       --glow-up: rgba(0,163,3,.25); --glow-down: rgba(204,61,0,.25);
+      --logo-disc: #eceef0;
     }
   }
   body[data-mode="light"] {
@@ -141,50 +143,62 @@
 
   /* ---------- card rows ---------- */
   .row {
-    display: flex; align-items: center; gap: 12px;
-    margin: 8px 12px; padding: 13px 12px 13px 14px;
+    display: flex; align-items: center; gap: 10px;
+    margin: 4px 12px; padding: 8px 10px 8px 10px;
     background: var(--surface); border: 1px solid var(--hairline);
-    border-radius: 16px; cursor: pointer;
+    border-radius: 13px; cursor: pointer;
     transition: transform .08s ease;
     /* long lists: skip layout/paint for offscreen rows */
-    content-visibility: auto; contain-intrinsic-size: auto 74px;
+    content-visibility: auto; contain-intrinsic-size: auto 56px;
   }
   .row:active { transform: scale(.985); background: var(--surface-2); }
+  .rnum {
+    flex: none; min-width: 1.6em; text-align: right;
+    color: var(--text-3); font-size: .7rem; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  /* one uniform logo treatment: small neutral disc, slightly desaturated mark */
   .logo {
-    width: 42px; height: 42px; border-radius: 50%; flex: none;
-    background: var(--tile); object-fit: contain; padding: 6px;
-    border: 1px solid var(--hairline);
+    width: 30px; height: 30px; border-radius: 50%; flex: none;
+    background: var(--logo-disc); object-fit: contain; padding: 4px;
+    filter: saturate(.75);
     opacity: 0; transition: opacity .25s ease;
   }
   .logo.ld { opacity: 1; }
-  .logo.dk { background: var(--surface-2); }
   .mono {
-    width: 42px; height: 42px; border-radius: 50%; flex: none;
+    width: 30px; height: 30px; border-radius: 50%; flex: none;
     background: var(--surface-2); color: var(--text-2);
     display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 1.05rem;
+    font-weight: 700; font-size: .82rem;
   }
-  .mono.seco { color: var(--text); font-size: .9rem; }
   .sic {
-    width: 42px; height: 42px; border-radius: 50%; flex: none;
+    width: 30px; height: 30px; border-radius: 50%; flex: none;
     display: flex; align-items: center; justify-content: center;
   }
   .id { flex: 1; min-width: 0; }
-  .id .t { font-weight: 700; font-size: 1.02rem; letter-spacing: .01em; }
+  .id .t { font-weight: 700; font-size: .95rem; letter-spacing: .01em; }
   .rstar {
     flex: none; background: none; border: none; color: var(--text-3);
     font-size: 1.15rem; line-height: 1; padding: 8px 0 8px 6px; margin-left: 0;
     cursor: pointer;
   }
   .rstar.on { color: #f5b93e; }
-  .id .n { color: var(--text-2); font-size: .8rem; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .id .n { color: var(--text-2); font-size: .72rem; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nsec { color: var(--text-3); }
   .rdel { font-size: .68rem; font-weight: 700; margin-left: 6px; vertical-align: 1px; }
   .rdel.up { color: var(--up); } .rdel.down { color: var(--down); }
   .chip {
     width: var(--chip-w); margin-left: 6px; flex: none;
-    text-align: right; padding: 7px 0;
-    font-size: .95rem; font-weight: 700; font-variant-numeric: tabular-nums;
+    text-align: right; padding: 5px 0;
+    font-size: .92rem; font-weight: 700; font-variant-numeric: tabular-nums;
   }
+  /* relative-magnitude bar under the value (95th-percentile scaled) */
+  .chipwrap { width: var(--chip-w); margin-left: 6px; flex: none; display: flex; flex-direction: column; align-items: flex-end; }
+  .chipwrap .chip { width: 100%; margin-left: 0; padding: 2px 0 1px; }
+  .mag { width: 100%; height: 3px; border-radius: 2px; }
+  .mag i { display: block; height: 100%; border-radius: 2px; margin-left: auto; background: var(--baseline); }
+  .mag i.up { background: var(--up); opacity: .55; }
+  .mag i.down { background: var(--down); opacity: .55; }
   .chip.up { color: var(--up); }
   .chip.down { color: var(--down); }
   .chip.flat { color: var(--text-2); }
@@ -423,7 +437,7 @@
         <span class="asof" id="asof"></span>
       </div>
       <div class="tabs" id="tabs">
-        <button data-view="watch">★</button>
+        <button data-view="watch" aria-label="Watchlist">★ Watch</button>
         <button data-view="all" class="active">1500</button>
         <button data-view="sp500">S&amp;P 500</button>
         <button data-view="sp400">Mid 400</button>
@@ -544,12 +558,18 @@
 <script>
 "use strict";
 const MODES = {
-  voladj: {label: "Avg VAR — reward per unit of risk", col: "final_score", head: "AVG VAR", fmt: v => v.toFixed(2), signed: true},
-  vol:    {label: "Volatility — annualized, 63-day", col: "volatility_63d", head: "VOL 63D", fmt: v => (v * 100).toFixed(0) + "%", signed: false},
-  today:  {label: "Today — live, top 100 by rank", heads: ["PRICE", "TODAY"]},
+  voladj: {label: "Ranked by Avg VAR", col: "final_score", head: "AVG VAR", fmt: v => v.toFixed(2), signed: true},
+  vol:    {label: "63-day volatility, annualized", col: "volatility_63d", head: "VOL", fmt: v => (v * 100).toFixed(0) + "%", signed: false},
+  today:  {label: "Today — live, top 100", heads: ["PRICE", "TODAY"]},
 };
 const PAGE = 80;
 const INDEX_NAME = {sp500: "S&P 500", sp400: "S&P MidCap 400", sp600: "S&P SmallCap 600"};
+const SECTOR_SHORT = {
+  "Information Technology": "Info Tech", "Health Care": "Health", "Financials": "Financials",
+  "Consumer Discretionary": "Discretionary", "Consumer Staples": "Staples",
+  "Communication Services": "Comm Svcs", "Industrials": "Industrials",
+  "Real Estate": "Real Estate", "Materials": "Materials", "Energy": "Energy", "Utilities": "Utilities",
+};
 const LOGO = s => "https://images.financialmodelingprep.com/symbol/" + encodeURIComponent(s.replace(".", "-")) + ".png";
 // Quotes and AI are served by the Cloudflare Worker; on the GitHub Pages
 // mirror the API lives cross-origin (the Worker sends open CORS headers).
@@ -639,54 +659,11 @@ const aiJson = (url, opts) => fetch(url, opts).then(r => r.json());
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 }
-const TILE_CACHE = (() => { try { return JSON.parse(localStorage.getItem("tilecls2") || "{}"); } catch (e) { return {}; } })();
-function classifyLogo(img, sym) {
-  // Colorful or light logos sit on a dark tile; dark unsaturated glyphs and
-  // images with a baked-in white background keep the light tile.
-  try {
-    const c = document.createElement("canvas");
-    c.width = c.height = 24;
-    const ctx = c.getContext("2d");
-    ctx.drawImage(img, 0, 0, 24, 24);
-    const d = ctx.getImageData(0, 0, 24, 24).data;
-    let n = 0, lum = 0, sat = 0, opaque = 0;
-    for (let i = 0; i < d.length; i += 4) {
-      if (d[i + 3] > 40) {
-        opaque++;
-        const r = d[i], g = d[i + 1], b = d[i + 2];
-        lum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        sat += Math.max(r, g, b) - Math.min(r, g, b);
-        n++;
-      }
-    }
-    if (!n) return "lt";
-    lum /= n; sat /= n;
-    const corners = [0, 23 * 4, 23 * 24 * 4, (24 * 24 - 1) * 4].every(i =>
-      d[i + 3] > 200 && (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) > 200);
-    if (opaque / 576 > 0.95 && corners) return "lt";
-    // dark tile only when the mark will actually pop on it: bright overall,
-    // or vividly saturated (a navy or muted-dark logo stays on light)
-    if (lum >= 110 || sat >= 120) return "dk";
-    return "lt";
-  } catch (e) {
-    return "lt";
-  }
-}
 function logoEl(sym, cls) {
   const img = document.createElement("img");
   img.className = cls; img.loading = "lazy"; img.alt = ""; img.decoding = "async";
-  img.crossOrigin = "anonymous";
-  if (TILE_CACHE[sym] === "dk") img.classList.add("dk");
   img.src = LOGO(sym);
-  img.onload = () => {
-    img.classList.add("ld");
-    if (!TILE_CACHE[sym]) {
-      const t = classifyLogo(img, sym);
-      TILE_CACHE[sym] = t;
-      try { localStorage.setItem("tilecls2", JSON.stringify(TILE_CACHE)); } catch (e) {}
-      if (t === "dk") img.classList.add("dk");
-    }
-  };
+  img.onload = () => img.classList.add("ld");
   if (img.complete && img.naturalWidth > 0) img.onload();
   img.onerror = () => {
     // stable per-symbol tint so fallbacks look intentional, not broken
@@ -760,9 +737,20 @@ function todayChips(sym) {
   return '<span class="chip flat">$' + (q.p >= 1000 ? q.p.toFixed(0) : q.p.toFixed(2)) + "</span>" +
     '<span class="chip ' + cls + '">' + (q.c > 0 ? "+" : "") + q.c.toFixed(2) + "%</span>";
 }
+let MAGP = 0; // 95th-percentile value of the current list, for magnitude bars
 function render(reset) {
   const cfg = MODES[mode];
-  if (reset) { current = rowsFor(); shown = 0; document.getElementById("list").innerHTML = ""; }
+  if (reset) {
+    current = rowsFor(); shown = 0; document.getElementById("list").innerHTML = "";
+    MAGP = 0;
+    if (mode !== "today" && current.length) {
+      // log-scaled to the max: the log compresses the outlier's lead so the
+      // rest of the distribution keeps visible shape
+      let mx = 0;
+      for (const r of current) { const v = r[IDX[cfg.col]]; if (v != null && v > mx) mx = v; }
+      if (mx > 0) MAGP = Math.log1p(mx);
+    }
+  }
   const showW = view === "watch" && mode !== "today" && !query;
   const WMAP = showW && current.length ? watchWeights(current.map(r => r[IDX.symbol])) : null;
   const frag = document.createDocumentFragment();
@@ -774,15 +762,27 @@ function render(reset) {
     el.className = "row";
     const on = WATCH.has(sym);
     const dl = DELTAS ? DELTAS[sym] : null;
+    const secShort = SECTOR_SHORT[r[IDX.sector]] || r[IDX.sector] || "";
+    let valueHtml;
+    if (mode === "today") valueHtml = todayChips(sym);
+    else {
+      const v = r[IDX[cfg.col]];
+      const frac = MAGP > 0 && v != null ? Math.max(0, Math.min(1, Math.log1p(cfg.signed ? Math.max(v, 0) : v) / MAGP)) : 0;
+      const dir = cfg.signed ? (v > 0 ? "up" : v < 0 ? "down" : "") : "";
+      valueHtml =
+        (showW ? '<span class="chip wchip">' + (WMAP && WMAP[sym] != null ? (WMAP[sym] * 100).toFixed(1) + "%" : "&hellip;") + "</span>" : "") +
+        '<span class="chipwrap">' + chip(v, cfg) +
+        '<span class="mag"><i class="' + dir + '" style="width:' + (frac * 100).toFixed(0) + '%"></i></span></span>';
+    }
     el.innerHTML =
+      '<span class="rnum">' + (i + 1) + "</span>" +
       '<div class="id"><div class="t">' + esc(sym) +
       (dl ? '<span class="rdel ' + (dl > 0 ? "up" : "down") + '">' + (dl > 0 ? "▲" : "▼") + Math.abs(dl) + "</span>" : "") +
-      '</div><div class="n">' + esc(r[IDX.name]) + "</div></div>" +
-      (mode === "today" ? todayChips(sym)
-        : (showW ? '<span class="chip wchip">' + (WMAP && WMAP[sym] != null ? (WMAP[sym] * 100).toFixed(1) + "%" : "&hellip;") + "</span>" : "") +
-          chip(r[IDX[cfg.col]], cfg)) +
+      '</div><div class="n">' + esc(r[IDX.name]) +
+      (secShort ? '<span class="nsec"> · ' + esc(secShort) + "</span>" : "") + "</div></div>" +
+      valueHtml +
       '<button class="rstar' + (on ? " on" : "") + '" aria-label="watchlist">' + (on ? "★" : "☆") + "</button>";
-    el.prepend(logoEl(sym, "logo"));
+    el.insertBefore(logoEl(sym, "logo"), el.children[1]);
     el.querySelector(".rstar").addEventListener("click", e => {
       e.stopPropagation();
       const btn = e.currentTarget;
@@ -817,7 +817,7 @@ function render(reset) {
   } else rev.hidden = true;
   document.getElementById("modelabel").textContent = cfg.label;
   if (mode === "today" && current.length) ensureToday(current.map(r => r[IDX.symbol]));
-  let heads = cfg.heads || [cfg.head, ""];
+  let heads = cfg.heads || ["", ""]; // single-value modes: the label is the header
   if (showW) heads = ["WEIGHT", cfg.head];
   document.getElementById("col1").textContent = heads[0];
   document.getElementById("col2").textContent = heads[1];
@@ -847,14 +847,20 @@ function explainFor(g, key) {
       return "Same idea over a shorter window: from 6 months ago to 1 month ago, skipping the most recent month." +
         '<span class="math">' + $(g("price_6m_ago")) + " (" + day(g("date_6m_ago")) + ") → " + $(g("price_1m_ago")) + " (" + day(g("date_1m_ago")) + ") = <b>" + pct1(g("return_6_1")) + "</b></span>";
     case "v63":
-      return "How bumpy the ride has been lately: the typical size of the stock's day-to-day moves over the last 63 trading days (~3 months), scaled up to a yearly figure (× √252). One volatility measure is used everywhere. Higher = wilder swings." +
+      return "How bumpy the ride has been lately: the typical size of the stock's day-to-day moves over the last 63 trading days (~3 months), scaled up to a yearly figure (× √252). One volatility measure is used everywhere; the scores never divide by less than 20%, so a stock flatlining into a buyout can't top the list on near-zero volatility alone." +
         '<span class="math">daily swings over 63 days × √252 = <b>' + (g("volatility_63d") * 100).toFixed(1) + "%</b></span>";
-    case "s12":
-      return "Volatility-adjusted return: the 12-1 return, annualized (× 252⁄231) so both windows share the same units, divided by the 63-day volatility. A big gain achieved smoothly scores higher than the same gain with wild swings." +
-        '<span class="math">' + pct1(g("return_12_1")) + " × 252⁄231 ÷ " + (g("volatility_63d") * 100).toFixed(1) + "% = <b>" + g("score_12").toFixed(2) + "</b></span>";
-    case "s6":
-      return "Volatility-adjusted return for the shorter window: the 6-1 return, annualized (× 252⁄105), divided by the same 63-day volatility." +
-        '<span class="math">' + pct1(g("return_6_1")) + " × 252⁄105 ÷ " + (g("volatility_63d") * 100).toFixed(1) + "% = <b>" + g("score_6").toFixed(2) + "</b></span>";
+    case "s12": {
+      const fv = Math.max(g("volatility_63d"), 0.2);
+      const floored = g("volatility_63d") < 0.2;
+      return "Volatility-adjusted return: the 12-1 return, annualized (× 252⁄231) so both windows share the same units, divided by the 63-day volatility" + (floored ? " (floored at 20%)" : "") + ". A big gain achieved smoothly scores higher than the same gain with wild swings." +
+        '<span class="math">' + pct1(g("return_12_1")) + " × 252⁄231 ÷ " + (fv * 100).toFixed(1) + "% = <b>" + g("score_12").toFixed(2) + "</b></span>";
+    }
+    case "s6": {
+      const fv = Math.max(g("volatility_63d"), 0.2);
+      const floored = g("volatility_63d") < 0.2;
+      return "Volatility-adjusted return for the shorter window: the 6-1 return, annualized (× 252⁄105), divided by the same 63-day volatility" + (floored ? " (floored at 20%)" : "") + "." +
+        '<span class="math">' + pct1(g("return_6_1")) + " × 252⁄105 ÷ " + (fv * 100).toFixed(1) + "% = <b>" + g("score_6").toFixed(2) + "</b></span>";
+    }
   }
   return "";
 }
@@ -1185,7 +1191,7 @@ function watchWeights(syms) {
     const iv = syms.map(s => {
       const r = BYSYM[s];
       const v = r ? r[IDX.volatility_63d] : null;
-      return v && v > 0 ? 1 / v : 0;
+      return v && v > 0 ? 1 / Math.max(v, 0.2) : 0; // same 20% floor as the scores
     });
     const tot = iv.reduce((a, b) => a + b, 0);
     if (!tot) return watchWeights.equalFallback(syms);

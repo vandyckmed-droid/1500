@@ -27,8 +27,9 @@ const METHODOLOGY =
   "(the latest month is skipped on purpose, standard momentum practice); return_6_1 " +
   "is the same over 6 months. volatility_63d is the one volatility measure used " +
   "everywhere: daily swings over the last 63 trading days, annualized. " +
-  "score_12 = (return_12_1 x 252/231) / volatility_63d and " +
-  "score_6 = (return_6_1 x 252/105) / volatility_63d " +
+  "score_12 = (return_12_1 x 252/231) / max(volatility_63d, 0.20) and " +
+  "score_6 = (return_6_1 x 252/105) / max(volatility_63d, 0.20) — the 20% floor " +
+  "keeps deal-pinned flatliners from dominating " +
   "(volatility-adjusted return, VAR = annualized reward per unit of risk). Every stock " +
   "is ranked by final_score, the average of score_12 and score_6; rank 1 is best of ~1500. " +
   "All returns and volatilities in the data are decimal fractions: 0.42 means 42%, " +
