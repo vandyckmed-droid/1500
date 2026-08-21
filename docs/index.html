@@ -315,6 +315,30 @@
   .rmov .d { margin-left: auto; font-weight: 700; font-size: .9rem; }
   .rmov .d.up { color: var(--up); } .rmov .d.down { color: var(--down); }
 
+  /* auto-build watchlist sheet + weights */
+  #absheet {
+    position: absolute; inset: 0; z-index: 45; background: var(--bg);
+    overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+    transform: translateY(100%); transition: transform .24s ease; visibility: hidden;
+    padding-bottom: 24px;
+  }
+  #absheet.open { transform: none; visibility: visible; }
+  .abrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--hairline); flex-wrap: wrap; }
+  .abrow .lbl { color: var(--text-2); font-size: .85rem; font-weight: 600; }
+  .abbtn {
+    display: block; width: calc(100% - 32px); margin: 16px 16px 6px; padding: 13px;
+    background: var(--brand); color: #fff; border: none; border-radius: 12px;
+    font: 700 .95rem inherit; cursor: pointer;
+  }
+  .abbtn.sec { background: var(--surface-2); color: var(--text); }
+  .abbtn[disabled] { opacity: .5; }
+  #absector { background: var(--surface-2); color: var(--text); border: none; border-radius: 8px; padding: 7px 10px; font: 600 .8rem inherit; max-width: 55%; }
+  .abprev { display: flex; align-items: center; gap: 10px; margin: 6px 12px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; }
+  .abprev .m { margin-left: auto; color: var(--text-2); font-size: .8rem; font-variant-numeric: tabular-nums; }
+  .wbarrow { display: flex; align-items: center; gap: 8px; padding: 8px 16px 2px; }
+  .wbarrow .lbl { color: var(--text-3); font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin-right: auto; }
+  .wchip { color: var(--text); font-weight: 700; }
+
   /* pull-to-refresh + live pulse + chart draw-in */
   .ptr { text-align: center; color: var(--text-3); font-size: .76rem; height: 0; overflow: hidden; transition: height .2s ease; }
   .ptr.on { height: 30px; padding-top: 9px; }
@@ -408,6 +432,17 @@
     </div>
     <div class="ptr" id="hptr">Refreshing&hellip;</div>
     <div id="status">Loading&hellip;</div>
+    <div id="wbar" hidden>
+      <div class="wbarrow">
+        <span class="lbl">Suggested weights</span>
+        <div class="seg" id="wseg">
+          <button data-w="equal">Equal</button>
+          <button data-w="invvol">Inv-Vol</button>
+          <button data-w="hrp">HRP</button>
+        </div>
+      </div>
+      <button class="abbtn sec" id="abopen" style="margin-top:8px">⚙ Auto-build this watchlist&hellip;</button>
+    </div>
     <div id="aireview" hidden></div>
     <div class="list" id="list"></div>
     <button class="more" id="more" hidden>Show more</button>
@@ -447,6 +482,16 @@
       <h3>Fine print</h3>
       <p>Research use only — not investment advice. Data may contain errors.</p>
     </div>
+  </div>
+
+  <!-- ===== auto-build watchlist sheet (slides up) ===== -->
+  <div id="absheet">
+    <div class="navbar">
+      <button class="back" id="abclose">Close</button>
+      <span class="title">Auto-build watchlist</span>
+      <span style="width:56px"></span>
+    </div>
+    <div id="abbody"></div>
   </div>
 
   <!-- ===== stock detail screen (slides over) ===== -->
@@ -507,6 +552,7 @@ function saveWatch() {
   try { localStorage.setItem("watch", JSON.stringify([...WATCH])); } catch (e) {}
   const rev = document.getElementById("aireview");
   if (rev) { rev.dataset.ready = ""; rev.innerHTML = ""; }
+  HRPW = {key: "", w: null, busy: false}; // weights are stale once the list changes
 }
 
 // theme boot (before first paint of content)
@@ -702,6 +748,8 @@ function todayChips(sym) {
 function render(reset) {
   const cfg = MODES[mode];
   if (reset) { current = rowsFor(); shown = 0; document.getElementById("list").innerHTML = ""; }
+  const showW = view === "watch" && mode !== "today" && !query;
+  const WMAP = showW && current.length ? watchWeights(current.map(r => r[IDX.symbol])) : null;
   const frag = document.createDocumentFragment();
   const upto = Math.min(current.length, shown + PAGE);
   for (let i = shown; i < upto; i++) {
@@ -716,7 +764,9 @@ function render(reset) {
       (dl ? '<span class="rdel ' + (dl > 0 ? "up" : "down") + '">' + (dl > 0 ? "▲" : "▼") + Math.abs(dl) + "</span>" : "") +
       '</div><div class="n">' + esc(r[IDX.name]) + "</div></div>" +
       (mode === "today" ? todayChips(sym)
-        : chip(r[IDX[cfg.cols[0]]], cfg) + (cfg.cols[1] ? chip(r[IDX[cfg.cols[1]]], cfg) : '<span class="chip flat"></span>')) +
+        : showW
+          ? '<span class="chip wchip">' + (WMAP && WMAP[sym] != null ? (WMAP[sym] * 100).toFixed(1) + "%" : "&hellip;") + "</span>" + chip(r[IDX[cfg.cols[0]]], cfg)
+          : chip(r[IDX[cfg.cols[0]]], cfg) + (cfg.cols[1] ? chip(r[IDX[cfg.cols[1]]], cfg) : '<span class="chip flat"></span>')) +
       '<button class="rstar' + (on ? " on" : "") + '" aria-label="watchlist">' + (on ? "★" : "☆") + "</button>";
     el.prepend(logoEl(sym, "logo"));
     el.querySelector(".rstar").addEventListener("click", e => {
@@ -753,9 +803,14 @@ function render(reset) {
   } else rev.hidden = true;
   document.getElementById("modelabel").textContent = cfg.label;
   if (mode === "today" && current.length) ensureToday(current.map(r => r[IDX.symbol]));
-  const heads = cfg.heads || ["12M", "6M"];
+  let heads = cfg.heads || ["12M", "6M"];
+  if (showW) heads = ["WEIGHT", heads[0] || "12M"];
   document.getElementById("col1").textContent = heads[0];
   document.getElementById("col2").textContent = heads[1];
+  const wbar = document.getElementById("wbar");
+  wbar.hidden = !(view === "watch" && !query);
+  if (!wbar.hidden)
+    for (const b of wbar.querySelectorAll("#wseg button")) b.classList.toggle("active", b.dataset.w === WSCHEME);
 }
 function refresh() { render(true); }
 
@@ -1106,6 +1161,264 @@ function renderAbout() {
     '<div class="kv"><span>Last update</span><b>' + DATA.generated_at.replace("T", " ").replace("Z", " UTC") + "</b></div>";
 }
 
+/* ---------- suggested watchlist weights ---------- */
+let WSCHEME = (() => { try { return localStorage.getItem("wscheme") || "invvol"; } catch (e) { return "invvol"; } })();
+let HRPW = {key: "", w: null, busy: false};
+
+// Returns {sym: weight} (weights sum to 1), or null while HRP is computing.
+function watchWeights(syms) {
+  if (syms.length === 1) return {[syms[0]]: 1};
+  if (WSCHEME === "equal") {
+    const w = {}; syms.forEach(s => w[s] = 1 / syms.length); return w;
+  }
+  if (WSCHEME === "invvol") {
+    const iv = syms.map(s => {
+      const r = BYSYM[s];
+      const v = r ? (r[IDX.volatility_12m] || r[IDX.volatility_6m]) : null;
+      return v && v > 0 ? 1 / v : 0;
+    });
+    const tot = iv.reduce((a, b) => a + b, 0);
+    if (!tot) return watchWeights.equalFallback(syms);
+    const w = {}; syms.forEach((s, i) => w[s] = iv[i] / tot); return w;
+  }
+  // HRP — computed asynchronously from daily price history
+  const key = syms.slice().sort().join(",");
+  if (HRPW.key === key && HRPW.w && HRPW.w !== "err") return HRPW.w;
+  if (HRPW.key === key && HRPW.w === "err") return watchWeights.equalFallback(syms);
+  computeHRP(syms, key);
+  return null;
+}
+watchWeights.equalFallback = syms => { const w = {}; syms.forEach(s => w[s] = 1 / syms.length); return w; };
+
+async function computeHRP(syms, key) {
+  if (HRPW.busy) return;
+  HRPW = {key, w: null, busy: true};
+  try {
+    // Same per-symbol daily log-return maps the correlation gate uses.
+    const series = await Promise.all(syms.map(retSeries));
+    const okIdx = [], maps = [];
+    series.forEach((m, i) => { if (m) { okIdx.push(i); maps.push(m); } });
+    if (okIdx.length < 2) throw new Error("insufficient data");
+    let dates = Object.keys(maps[0]);
+    for (let k = 1; k < maps.length; k++) dates = dates.filter(dt => dt in maps[k]);
+    dates.sort();
+    dates = dates.slice(-126); // ~6 months of overlapping days
+    if (dates.length < 40) throw new Error("insufficient overlap");
+    const rets = maps.map(m => dates.map(dt => m[dt]));
+    const nA = rets.length, T = rets[0].length;
+    const mean = rets.map(r => r.reduce((a, b) => a + b, 0) / T);
+    const cov = Array.from({length: nA}, () => new Array(nA));
+    for (let a = 0; a < nA; a++) for (let b = a; b < nA; b++) {
+      let s = 0; for (let t = 0; t < T; t++) s += (rets[a][t] - mean[a]) * (rets[b][t] - mean[b]);
+      cov[a][b] = cov[b][a] = s / (T - 1);
+    }
+    // Correlation-distance single-linkage clustering; the merge order gives the
+    // quasi-diagonal ordering (Lopez de Prado's HRP construction).
+    const dist = (a, b) => Math.sqrt(Math.max(0, 0.5 * (1 - cov[a][b] / Math.sqrt(cov[a][a] * cov[b][b]))));
+    let clusters = Array.from({length: nA}, (_, i) => [i]);
+    while (clusters.length > 1) {
+      let bi = 0, bj = 1, bd = Infinity;
+      for (let i = 0; i < clusters.length; i++) for (let j = i + 1; j < clusters.length; j++) {
+        let d = Infinity;
+        for (const a of clusters[i]) for (const b of clusters[j]) d = Math.min(d, dist(a, b));
+        if (d < bd) { bd = d; bi = i; bj = j; }
+      }
+      clusters[bi] = clusters[bi].concat(clusters[bj]);
+      clusters.splice(bj, 1);
+    }
+    const order = clusters[0];
+    // Recursive bisection with inverse-variance allocations.
+    const w = new Array(nA).fill(1);
+    const clusterVar = idxs => {
+      const ivp = idxs.map(i => 1 / cov[i][i]);
+      const s = ivp.reduce((a, b) => a + b, 0);
+      const ww = ivp.map(v => v / s);
+      let v = 0;
+      for (let a = 0; a < idxs.length; a++) for (let b = 0; b < idxs.length; b++)
+        v += ww[a] * ww[b] * cov[idxs[a]][idxs[b]];
+      return v;
+    };
+    const stack = [order];
+    while (stack.length) {
+      const cl = stack.pop();
+      if (cl.length < 2) continue;
+      const half = Math.floor(cl.length / 2);
+      const c1 = cl.slice(0, half), c2 = cl.slice(half);
+      const v1 = clusterVar(c1), v2 = clusterVar(c2);
+      const alpha = 1 - v1 / (v1 + v2);
+      for (const i of c1) w[i] *= alpha;
+      for (const i of c2) w[i] *= 1 - alpha;
+      stack.push(c1, c2);
+    }
+    const tot = w.reduce((a, b) => a + b, 0);
+    const out = {};
+    okIdx.forEach((origI, k) => { out[syms[origI]] = w[k] / tot; });
+    for (const s of syms) if (!(s in out)) out[s] = 0; // no price data: sized at zero, not stuck loading
+    HRPW = {key, w: out, busy: false};
+  } catch (e) {
+    HRPW = {key, w: "err", busy: false};
+  }
+  if (view === "watch") render(true);
+}
+
+document.getElementById("wseg").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  WSCHEME = b.dataset.w;
+  try { localStorage.setItem("wscheme", WSCHEME); } catch (e2) {}
+  render(true);
+});
+
+/* ---------- auto-build watchlist ---------- */
+const AB = {univ: "all", n: 10, sector: "", vol: 0, mcap: 0, cap: 0, corr: 0, mode: "replace"};
+const ABOPTS = [
+  ["univ", "Universe", [["all", "All 1500"], ["sp500", "S&P 500"], ["sp400", "Mid 400"], ["sp600", "Small 600"]]],
+  ["n", "How many stocks", [[5, "5"], [10, "10"], [15, "15"], [20, "20"]]],
+  ["vol", "Max volatility (12M)", [[0, "Any"], [0.4, "≤40%"], [0.6, "≤60%"]]],
+  ["mcap", "Min market cap", [[0, "Any"], [2e9, "$2B+"], [10e9, "$10B+"], [50e9, "$50B+"]]],
+  ["cap", "Max per sector", [[0, "Any"], [1, "1"], [2, "2"], [3, "3"]]],
+  ["corr", "Max pairwise correlation", [[0, "Any"], [0.8, "≤0.80"], [0.65, "≤0.65"], [0.5, "≤0.50"]]],
+  ["mode", "Fill mode", [["replace", "Replace list"], ["add", "Add to list"]]],
+];
+
+// Daily log-return map per symbol, session-cached — failures cache as null so
+// a symbol with no price file is fetched at most once. Shared by the
+// correlation gate and HRP.
+const RETS = {};
+async function retSeries(sym) {
+  if (sym in RETS) return RETS[sym];
+  try {
+    const d = await fetchPrices(sym);
+    const m = {};
+    const from = Math.max(1, d.close.length - 140);
+    for (let j = from; j < d.close.length; j++)
+      m[d.dates[j]] = Math.log(d.close[j] / d.close[j - 1]);
+    RETS[sym] = Object.keys(m).length > 40 ? m : null;
+  } catch (e) {
+    RETS[sym] = null;
+  }
+  return RETS[sym];
+}
+function corrOf(a, b) {
+  if (!a || !b) return null;
+  const dates = Object.keys(a).filter(dt => dt in b);
+  if (dates.length < 40) return null;
+  const n = dates.length;
+  let ma = 0, mb = 0;
+  for (const dt of dates) { ma += a[dt]; mb += b[dt]; }
+  ma /= n; mb /= n;
+  let sab = 0, sa = 0, sb = 0;
+  for (const dt of dates) {
+    const xa = a[dt] - ma, xb = b[dt] - mb;
+    sab += xa * xb; sa += xa * xa; sb += xb * xb;
+  }
+  return sa && sb ? sab / Math.sqrt(sa * sb) : null;
+}
+
+function buildAB() {
+  abRunId++; // rebuilding the sheet orphans any in-flight run
+  const body = document.getElementById("abbody");
+  const secs = (DATA.sectors || []).map(s => s.sector).sort();
+  body.innerHTML =
+    ABOPTS.map(([k, lbl, opts]) =>
+      '<div class="abrow"><span class="lbl">' + lbl + '</span><div class="seg" data-k="' + k + '">' +
+      opts.map(([v, t]) => '<button data-v="' + v + '"' + (String(AB[k]) === String(v) ? ' class="active"' : "") + ">" + t + "</button>").join("") +
+      "</div></div>").join("") +
+    '<div class="abrow"><span class="lbl">Sector</span><select id="absector"><option value="">Any sector</option>' +
+    secs.map(s => '<option' + (AB.sector === s ? " selected" : "") + ">" + esc(s) + "</option>").join("") + "</select></div>" +
+    '<div class="abrow"><span class="lbl" style="font-size:.76rem;color:var(--text-3)">Greedy fill: walks the rankings best-first, admitting each stock only if it passes every filter — including staying under the correlation cap against everything already on the list (measured on ~6 months of daily returns).</span></div>' +
+    '<button class="abbtn" id="abrun">Run</button><div id="abpreview"></div>';
+  body.querySelectorAll(".seg[data-k]").forEach(seg => seg.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    const k = seg.dataset.k, v = b.dataset.v;
+    AB[k] = (k === "mode" || k === "univ") ? v : +v;
+    for (const x of seg.querySelectorAll("button")) x.classList.toggle("active", x === b);
+  }));
+  document.getElementById("absector").addEventListener("change", e => { AB.sector = e.target.value; });
+  document.getElementById("abrun").addEventListener("click", runAB);
+}
+
+let abRunId = 0; // invalidates in-flight runs when the sheet is rebuilt or rerun
+async function runAB() {
+  const C = {...AB}; // snapshot: option taps mid-run must not change this run
+  const myId = ++abRunId;
+  const btn = document.getElementById("abrun");
+  const pv = document.getElementById("abpreview");
+  const alive = () => myId === abRunId && pv.isConnected;
+  btn.disabled = true;
+  const CAP = 200;
+  const picks = [];
+  const perSector = {};
+  const skipped = [];
+  // Greedy correlation gate: a candidate must not correlate above the cap
+  // with anything already admitted (including the current list in add mode).
+  const admitted = C.mode === "add" ? [...WATCH] : [];
+  let checked = 0, truncated = false;
+  try {
+    if (C.corr && admitted.length) await Promise.all(admitted.map(retSeries)); // warm in parallel
+    for (const r of DATA.rows) {
+      if (!alive()) return;
+      if (picks.length >= C.n) break;
+      const sym = r[IDX.symbol];
+      if (C.mode === "add" && WATCH.has(sym)) continue;
+      if (C.univ !== "all" && r[IDX.index] !== C.univ) continue;
+      if (C.sector && r[IDX.sector] !== C.sector) continue;
+      if (C.vol && (r[IDX.volatility_12m] || 99) > C.vol) continue;
+      if (C.mcap && (r[IDX.market_cap] || 0) < C.mcap) continue;
+      const sec = r[IDX.sector] || "?";
+      if (C.cap && (perSector[sec] || 0) >= C.cap) continue;
+      if (C.corr && admitted.length) {
+        if (++checked > CAP) { truncated = true; break; }
+        pv.innerHTML = '<div class="chart-note" style="padding:8px 16px">Checking correlations&hellip; ' +
+          picks.length + " picked, " + checked + " examined</div>";
+        const cand = await retSeries(sym); // null (no data) passes the gate
+        let worst = null;
+        for (const a of admitted) {
+          const c = corrOf(cand, await retSeries(a));
+          if (c != null && c > C.corr && (!worst || c > worst.c)) worst = {s: a, c};
+        }
+        if (worst) { skipped.push(sym + " (" + worst.c.toFixed(2) + " vs " + worst.s + ")"); continue; }
+      }
+      perSector[sec] = (perSector[sec] || 0) + 1;
+      picks.push(r);
+      admitted.push(sym);
+    }
+  } finally { if (btn.isConnected) btn.disabled = false; }
+  if (!alive()) return;
+  if (!picks.length) {
+    pv.innerHTML = '<div class="chart-note" style="padding:8px 16px">' +
+      (truncated
+        ? "Nothing found within the first " + CAP + " candidates — raise the correlation cap or tighten other filters."
+        : "No stocks pass those filters — loosen something and run again.") + "</div>";
+    return;
+  }
+  pv.innerHTML =
+    '<div class="sec-label">Result · ' + picks.length + " stocks" +
+    (picks.length < C.n
+      ? (truncated ? " (search stopped at " + CAP + " candidates)" : " (fewer than requested passed the filters)")
+      : "") + "</div>" +
+    (skipped.length
+      ? '<div class="chart-note" style="padding:0 16px 6px">Skipped as too correlated: ' +
+        esc(skipped.slice(0, 8).join(", ")) + (skipped.length > 8 ? " +" + (skipped.length - 8) + " more" : "") + "</div>"
+      : "") +
+    picks.map(r =>
+      '<div class="abprev"><div class="id"><div class="t">' + esc(r[IDX.symbol]) + '</div><div class="n">' + esc(r[IDX.name]) + "</div></div>" +
+      '<span class="m">#' + r[IDX.rank_1500] + " · vol " + Math.round((r[IDX.volatility_12m] || 0) * 100) + "%</span></div>").join("") +
+    '<button class="abbtn" id="abapply">' + (C.mode === "replace" ? "Replace watchlist" : "Add to watchlist") + "</button>";
+  document.getElementById("abapply").addEventListener("click", () => {
+    if (C.mode === "replace") WATCH.clear();
+    picks.forEach(r => WATCH.add(r[IDX.symbol]));
+    saveWatch();
+    document.getElementById("absheet").classList.remove("open");
+    view = "watch";
+    for (const x of document.querySelectorAll("#tabs button")) x.classList.toggle("active", x.dataset.view === "watch");
+    location.hash = "#/rankings";
+    refresh();
+    document.getElementById("home").scrollTo({top: 0});
+  });
+}
+document.getElementById("abopen").addEventListener("click", () => { buildAB(); document.getElementById("absheet").classList.add("open"); });
+document.getElementById("abclose").addEventListener("click", () => document.getElementById("absheet").classList.remove("open"));
+
 /* ---------- dashboard (Today) ---------- */
 function sparkSVG(q, w, h) {
   const s = q.s && q.s.length > 1 ? q.s : [q.prev, q.p];
@@ -1232,6 +1545,7 @@ function route() {
   const h = location.hash;
   const stock = h.match(/^#\/s\/(.+)$/);
   document.getElementById("stock").classList.toggle("open", !!stock);
+  document.getElementById("absheet").classList.remove("open");
   if (stock) { showStock(decodeURIComponent(stock[1])); return; }
   const screen = h === "#/about" ? "about" : h === "#/sectors" ? "sectors" :
     h === "#/rankings" ? "home" : "dash";
