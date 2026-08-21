@@ -30,7 +30,8 @@ const METHODOLOGY =
   "score_12 = (return_12_1 x 252/231) / max(volatility_63d, 0.20) and " +
   "score_6 = (return_6_1 x 252/105) / max(volatility_63d, 0.20) — the 20% floor " +
   "keeps deal-pinned flatliners from dominating " +
-  "(volatility-adjusted return, VAR = annualized reward per unit of risk). Every stock " +
+  "(volatility-adjusted return, VAR = annualized reward per unit of risk). Stocks whose " +
+  "21-day vol is under 6% are excluded as pinned to an acquisition price. Every stock " +
   "is ranked by final_score, the average of score_12 and score_6; rank 1 is best of ~1500. " +
   "All returns and volatilities in the data are decimal fractions: 0.42 means 42%, " +
   "3.39 means 339% — convert carefully when quoting percentages. " +
@@ -374,6 +375,11 @@ async function ensureIngest(env, d) {
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS ranks_sym ON ranks(symbol, as_of)").run();
   let have = await env.DB.prepare("SELECT COUNT(*) n FROM ranks WHERE as_of = ?")
     .bind(d.as_of).first("n");
+  if (have && have !== d.rows.length) {
+    // republished day with a different row count (e.g. new exclusions)
+    await env.DB.prepare("DELETE FROM ranks WHERE as_of = ?").bind(d.as_of).run();
+    have = 0;
+  }
   if (have) {
     // Self-heal when a stored day was recomputed (e.g. a methodology change
     // republished the same as_of): probe one symbol's score and re-ingest on

@@ -31,9 +31,13 @@ static mirror of the same site.
    - `alternative_score = ((return_12_1 + return_6_1)/2) / max(volatility_63d, 0.20)` (retained)
    - The 20% volatility floor stops deal-pinned flatliners (near-zero recent
      vol) from dominating the ranking; `volatility_63d` itself is reported raw.
-6. **Ranks** — within each index and across the full S&P 1500 (rank 1 = best).
-   Securities without a complete 12-month history are excluded and listed in the
-   data file under `excluded`.
+6. **Pinned-price screen** — securities whose annualized 21-day volatility is
+   below 6% are excluded: a price that has stopped moving is almost always
+   pinned to an acquisition offer, and its trailing returns are dead money,
+   not momentum.
+7. **Ranks** — within each index and across the full S&P 1500 (rank 1 = best).
+   Securities without a complete 12-month history, and pinned-price names,
+   are excluded and listed in the data file under `excluded`.
 
 ## Data sources
 

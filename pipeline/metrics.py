@@ -37,6 +37,12 @@ YEAR = 252
 
 VOL_FLOOR = 0.20
 
+# A price pinned to an acquisition offer stops moving: annualized vol over the
+# last 21 trading days collapses far below anything that genuinely trades
+# (the calmest real large caps run ~12%+). Such names are excluded outright —
+# their trailing returns are dead money, not momentum.
+PINNED_VOL21 = 0.06
+
 MIN_OBS_6M = 120
 
 
@@ -72,6 +78,8 @@ def compute_symbol_metrics(prices: pd.Series) -> dict | None:
     out["return_6_1"] = p_1m / p_6m - 1.0
     vol_63 = float(daily.iloc[-QUARTER:].std(ddof=1)) * math.sqrt(YEAR)
     out["volatility_63d"] = vol_63
+    # internal, for the pinned-price screen in build_table (not published)
+    out["_vol21"] = float(daily.iloc[-MONTH:].std(ddof=1)) * math.sqrt(YEAR)
 
     # 12-month metrics: require a genuine 252-trading-day lookback so the
     # 12-1 window is never silently shortened for young listings.
@@ -132,6 +140,16 @@ def build_table(
                     "symbol": sym,
                     "index": rec["index"],
                     "reason": f"incomplete 12m history ({m['n_obs']} obs)",
+                }
+            )
+            continue
+        vol21 = m.pop("_vol21")
+        if vol21 < PINNED_VOL21:
+            excluded.append(
+                {
+                    "symbol": sym,
+                    "index": rec["index"],
+                    "reason": f"price pinned (21d vol {vol21:.1%}, likely pending acquisition)",
                 }
             )
             continue
