@@ -7,58 +7,68 @@
 <title>S&amp;P 1500 Momentum</title>
 <link rel="icon" type="image/png" href="favicon-64.png">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://images.financialmodelingprep.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com">
 <link rel="apple-touch-icon" href="icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="S&amp;P 1500">
 <style>
+  /* Dark is the default look: true black, signature green, glowing charts. */
   :root {
     --bg: #000000;
-    --surface: #141414;
-    --surface-2: #1d1d1f;
-    --hairline: #26262a;
-    --text: #f2f2f4;
-    --text-2: #9a9aa2;
-    --text-3: #6c6c74;
-    --brand: #d91222;          /* IBKR red */
-    --up: #1fc27e;
-    --up-bg: #0d2e21;
-    --down: #f0443b;
-    --down-bg: #351512;
-    --flat-bg: #23232a;
+    --surface: #101214;
+    --surface-2: #1b1e22;
+    --hairline: #202428;
+    --text: #f5f6f7;
+    --text-2: #9aa3ad;
+    --text-3: #6b737b;
+    --brand: #00c805;
+    --brand-hi: #3ce65f;
+    --brand-fg: #002b01;
+    --up: #00c805;
+    --up-bg: #0a2b10;
+    --down: #ff5000;
+    --down-bg: #331107;
+    --flat-bg: #1b1e22;
     --nav-bg: rgba(0,0,0,.92);
-    --tabbar-bg: rgba(10,10,10,.88);
+    --tabbar-bg: rgba(5,6,7,.9);
     --tile: #f2f2f4;
-    --seg-active: #3a3a40;
-    --baseline: #3a3a40;
-    --brand-hi: #ff5a67;
+    --seg-active: #2a2f34;
+    --baseline: #3a4046;
+    --glow-up: rgba(0,200,5,.4);
+    --glow-down: rgba(255,80,0,.4);
+    /* pills keep the vivid brand colors in both modes */
+    --pill-up: #00c805; --pill-up-fg: #002b01;
+    --pill-down: #ff5000; --pill-down-fg: #2e0c00;
     --chip-w: 4.3rem;
     --tabbar-h: calc(52px + env(safe-area-inset-bottom));
   }
-  body[data-theme="rh"] {
-    --bg: #0d1015; --surface: #161b22; --surface-2: #1f2630;
-    --hairline: #29323d; --text: #eef1f4; --text-2: #9aa7b4; --text-3: #64707d;
-    --brand: #00c805; --brand-hi: #5dff85;
-    --up: #00c805; --up-bg: #0a2e14;
-    --down: #ff5000; --down-bg: #38150a;
-    --flat-bg: #1f2630;
-    --nav-bg: rgba(13,16,21,.92);
-    --tabbar-bg: rgba(16,20,26,.92);
-    --seg-active: #2c3642;
-    --baseline: #2c3642;
+  /* Light mode: same design, inverted ground. Applied by system preference
+     (unless the user forces dark) or by the manual Light setting. */
+  @media (prefers-color-scheme: light) {
+    body:not([data-mode="dark"]) {
+      --bg: #ffffff; --surface: #f6f7f8; --surface-2: #eceef0;
+      --hairline: #e3e6e9; --text: #101418; --text-2: #56606a; --text-3: #8a929a;
+      --brand: #00a303; --brand-hi: #00c805; --brand-fg: #ffffff;
+      --up: #008006; --up-bg: #e2f4e3;
+      --down: #cc3d00; --down-bg: #fbe8de;
+      --flat-bg: #eceef0;
+      --nav-bg: rgba(255,255,255,.92); --tabbar-bg: rgba(250,250,251,.92);
+      --tile: #ffffff; --seg-active: #ffffff; --baseline: #c3c9cf;
+      --glow-up: rgba(0,163,3,.25); --glow-down: rgba(204,61,0,.25);
+    }
   }
-  body[data-theme="fid"] {
-    --bg: #f2f4f6; --surface: #ffffff; --surface-2: #e7ebef;
-    --hairline: #d6dce2; --text: #15181c; --text-2: #4d5866; --text-3: #8a94a1;
-    --brand: #368727; --brand-hi: #5aa74a;
-    --up: #1e7d34; --up-bg: #ddefe1;
-    --down: #c62828; --down-bg: #f9e0de;
-    --flat-bg: #e7ebef;
-    --nav-bg: rgba(255,255,255,.92);
-    --tabbar-bg: rgba(250,251,252,.92);
-    --tile: #ffffff;
-    --seg-active: #cfd7de;
-    --baseline: #c2c9d1;
+  body[data-mode="light"] {
+    --bg: #ffffff; --surface: #f6f7f8; --surface-2: #eceef0;
+    --hairline: #e3e6e9; --text: #101418; --text-2: #56606a; --text-3: #8a929a;
+    --brand: #00a303; --brand-hi: #00c805; --brand-fg: #ffffff;
+    --up: #008006; --up-bg: #e2f4e3;
+    --down: #cc3d00; --down-bg: #fbe8de;
+    --flat-bg: #eceef0;
+    --nav-bg: rgba(255,255,255,.92); --tabbar-bg: rgba(250,250,251,.92);
+    --tile: #ffffff; --seg-active: #ffffff; --baseline: #c3c9cf;
+    --glow-up: rgba(0,163,3,.25); --glow-down: rgba(204,61,0,.25);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html { background: var(--bg); height: 100%; }
@@ -135,8 +145,9 @@
     margin: 8px 12px; padding: 13px 12px 13px 14px;
     background: var(--surface); border: 1px solid var(--hairline);
     border-radius: 16px; cursor: pointer;
-    box-shadow: 0 1px 3px rgba(0,0,0,.25);
     transition: transform .08s ease;
+    /* long lists: skip layout/paint for offscreen rows */
+    content-visibility: auto; contain-intrinsic-size: auto 74px;
   }
   .row:active { transform: scale(.985); background: var(--surface-2); }
   .logo {
@@ -228,6 +239,9 @@
   .chart-readout .cr-delta.up { color: var(--up); } .chart-readout .cr-delta.down { color: var(--down); }
   .chart-readout .cr-sub { color: var(--text-3); font-size: .78rem; margin-left: auto; }
   .chartsvg { display: block; width: 100%; height: 190px; touch-action: pan-y; }
+  /* signature glow on the main price line */
+  .chline.up { filter: drop-shadow(0 0 6px var(--glow-up)); }
+  .chline.down { filter: drop-shadow(0 0 6px var(--glow-down)); }
   .ranges { display: flex; gap: 6px; padding: 8px 0 0; }
   .ranges button {
     flex: 1; background: none; border: none; color: var(--text-3); border-radius: 7px;
@@ -306,8 +320,8 @@
   .ixcard svg { display: block; width: 100%; height: 26px; margin-top: 4px; }
   .mspark { flex: none; width: 84px; height: 32px; }
   .pill { flex: none; min-width: 62px; text-align: center; border-radius: 8px; padding: 5px 6px; font-weight: 700; font-size: .8rem; font-variant-numeric: tabular-nums; }
-  .pill.up { background: var(--up-bg); color: var(--up); }
-  .pill.down { background: var(--down-bg); color: var(--down); }
+  .pill.up { background: var(--pill-up); color: var(--pill-up-fg); }
+  .pill.down { background: var(--pill-down); color: var(--pill-down-fg); }
   .pill.flat { background: var(--flat-bg); color: var(--text-2); }
   .dprice { flex: none; text-align: right; }
   .dprice .p { font-weight: 700; font-size: .92rem; font-variant-numeric: tabular-nums; }
@@ -327,7 +341,7 @@
   .abrow .lbl { color: var(--text-2); font-size: .85rem; font-weight: 600; }
   .abbtn {
     display: block; width: calc(100% - 32px); margin: 16px 16px 6px; padding: 13px;
-    background: var(--brand); color: #fff; border: none; border-radius: 12px;
+    background: var(--brand); color: var(--brand-fg); border: none; border-radius: 12px;
     font: 700 .95rem inherit; cursor: pointer;
   }
   .abbtn.sec { background: var(--surface-2); color: var(--text); }
@@ -467,11 +481,11 @@
       <p><b>12-1 / 6-1 return</b> — how much the stock moved over the past 12 or 6 months, skipping the most recent month.</p>
       <p><b>Volatility</b> — how bumpy the ride was, from daily price swings, annualized.</p>
       <p><b>VAR (volatility-adjusted return)</b> — return divided by volatility: reward per unit of risk. The list is ordered by <b>Avg. VAR</b>, the average of the 12-1 and 6-1 VARs.</p>
-      <h3>Theme</h3>
-      <div class="seg" id="themeseg" style="display:inline-flex">
-        <button data-theme="">IBKR</button>
-        <button data-theme="rh">Robinhood</button>
-        <button data-theme="fid">Fidelity</button>
+      <h3>Appearance</h3>
+      <div class="seg" id="modeseg" style="display:inline-flex">
+        <button data-mode="auto">Auto</button>
+        <button data-mode="dark">Dark</button>
+        <button data-mode="light">Light</button>
       </div>
       <h3>Ask the AI</h3>
       <label class="search" style="margin:4px 0 8px">
@@ -555,19 +569,25 @@ function saveWatch() {
   HRPW = {key: "", w: null, busy: false}; // weights are stale once the list changes
 }
 
-// theme boot (before first paint of content)
-const THEME_COLORS = {"": "#000000", rh: "#0d1015", fid: "#f2f4f6"};
-function applyTheme(t) {
-  document.body.dataset.theme = t;
-  document.querySelector('meta[name="theme-color"]').setAttribute("content", THEME_COLORS[t] || "#000000");
-  for (const b of document.querySelectorAll("#themeseg button"))
-    b.classList.toggle("active", b.dataset.theme === t);
-  try { localStorage.setItem("theme", t); } catch (e) {}
+// appearance boot (before first paint of content): auto = follow the system
+const lightMql = matchMedia("(prefers-color-scheme: light)");
+function applyMode(m) {
+  document.body.dataset.mode = m === "auto" ? "" : m;
+  const light = m === "light" || (m === "auto" && lightMql.matches);
+  document.querySelector('meta[name="theme-color"]').setAttribute("content", light ? "#ffffff" : "#000000");
+  for (const b of document.querySelectorAll("#modeseg button"))
+    b.classList.toggle("active", b.dataset.mode === m);
+  try { localStorage.setItem("mode", m); } catch (e) {}
 }
-applyTheme((() => { try { return localStorage.getItem("theme") || ""; } catch (e) { return ""; } })());
-document.getElementById("themeseg").addEventListener("click", e => {
+const savedMode = (() => { try { return localStorage.getItem("mode") || "auto"; } catch (e) { return "auto"; } })();
+applyMode(["auto", "dark", "light"].includes(savedMode) ? savedMode : "auto");
+lightMql.addEventListener("change", () => {
+  let m = "auto"; try { m = localStorage.getItem("mode") || "auto"; } catch (e) {}
+  if (m === "auto") applyMode("auto");
+});
+document.getElementById("modeseg").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
-  applyTheme(b.dataset.theme);
+  applyMode(b.dataset.mode);
 });
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
@@ -575,7 +595,9 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 let lastFetch = 0;
 function loadData(first) {
   lastFetch = Date.now();
-  return fetch("data/rankings.json", {cache: "no-store"}).then(r => {
+  // First paint rides the service worker's stale-while-revalidate (instant
+  // from cache); explicit refreshes bypass it for guaranteed-fresh data.
+  return fetch("data/rankings.json", first ? undefined : {cache: "no-store"}).then(r => {
     if (!r.ok) throw new Error("HTTP " + r.status);
     return r.json();
   }).then(d => {
@@ -923,7 +945,7 @@ function renderChart(box, view) {
         '<stop offset="1" stop-color="' + col + '" stop-opacity="0"/></linearGradient></defs>' +
       '<path class="charea" d="' + area + '" fill="url(#cg)"/>' +
       '<line x1="0" x2="' + W + '" y1="' + y(first).toFixed(1) + '" y2="' + y(first).toFixed(1) + '" stroke="var(--baseline)" stroke-width="1" stroke-dasharray="3,6" vector-effect="non-scaling-stroke"/>' +
-      '<path class="chline" d="' + path + '" fill="none" stroke="' + col + '" stroke-width="2" vector-effect="non-scaling-stroke"/>' +
+      '<path class="chline ' + (up ? "up" : "down") + '" d="' + path + '" fill="none" stroke="' + col + '" stroke-width="2" vector-effect="non-scaling-stroke"/>' +
       (view.live ?
         '<circle class="chld" cx="' + x(closes.length - 1).toFixed(1) + '" cy="' + y(last).toFixed(1) + '" r="6" fill="' + col + '"/>' +
         '<circle class="chld pulse" cx="' + x(closes.length - 1).toFixed(1) + '" cy="' + y(last).toFixed(1) + '" r="6" fill="' + col + '"/>'
