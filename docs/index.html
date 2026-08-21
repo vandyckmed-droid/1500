@@ -55,6 +55,9 @@
     --up: #23684a;
     --down: #9c392b;
     --baseline: #b5ac9a;
+    --dur-1: .12s;   /* state feedback: presses, hovers */
+    --dur-2: .22s;   /* movement: screens, sheets, reveals */
+    --ease: cubic-bezier(.3, .7, .3, 1);
     --serif: "Fraunces", Georgia, "Times New Roman", serif;
     --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     --chip-w: 4.6rem;
@@ -152,7 +155,7 @@
     margin: 0; padding: 9px 16px;
     background: none; border: none; border-radius: 0;
     border-top: 1px solid var(--hairline);
-    cursor: pointer; transition: background .12s ease;
+    cursor: pointer; transition: background var(--dur-1) var(--ease);
     /* long lists: skip layout/paint for offscreen rows */
     content-visibility: auto; contain-intrinsic-size: auto 52px;
   }
@@ -210,7 +213,7 @@
   #stock {
     position: absolute; inset: 0; z-index: 40; background: var(--bg);
     overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
-    transform: translateX(100%); transition: transform .22s ease; visibility: hidden;
+    transform: translateX(100%); transition: transform var(--dur-2) var(--ease); visibility: hidden;
     padding-bottom: 16px;
   }
   #stock.open { transform: translateX(0); visibility: visible; }
@@ -344,7 +347,7 @@
   #absheet {
     position: absolute; inset: 0; z-index: 45; background: var(--bg);
     overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
-    transform: translateY(100%); transition: transform .24s ease; visibility: hidden;
+    transform: translateY(100%); transition: transform var(--dur-2) var(--ease); visibility: hidden;
     padding-bottom: 24px;
   }
   #absheet.open { transform: none; visibility: visible; }
@@ -365,7 +368,7 @@
   .wchip { color: var(--text); font-weight: 500; }
 
   /* pull-to-refresh + live pulse */
-  .ptr { text-align: center; color: var(--text-3); font-size: .76rem; height: 0; overflow: hidden; transition: height .2s ease; }
+  .ptr { text-align: center; color: var(--text-3); font-size: .76rem; height: 0; overflow: hidden; transition: height var(--dur-2) var(--ease); }
   .ptr.on { height: 30px; padding-top: 9px; }
   .pulse { transform-box: fill-box; transform-origin: center; animation: pulsedot 1.8s ease-out infinite; }
   @keyframes pulsedot {
@@ -374,6 +377,13 @@
     100% { opacity: 0; transform: scale(3.2); }
   }
   @media (prefers-reduced-motion: reduce) { .pulse { animation: none; opacity: 0; } }
+  /* one motion system: screens rise in quietly; stars acknowledge the tap */
+  @media (prefers-reduced-motion: no-preference) {
+    .screen:not([hidden]) { animation: screenin var(--dur-2) var(--ease) both; }
+    .rstar.pop, .navbar .star.pop { animation: starpop .22s var(--ease); }
+  }
+  @keyframes screenin { from { opacity: .35; transform: translateY(4px); } }
+  @keyframes starpop { 50% { transform: scale(1.35); } }
 
   /* ---------- about screen ---------- */
   #about .navbar .title { padding-right: 0; margin: 0 auto; }
@@ -917,6 +927,7 @@ function render(reset) {
       saveWatch();
       btn.textContent = now ? "★" : "☆";
       btn.classList.toggle("on", now);
+      btn.classList.remove("pop"); void btn.offsetWidth; btn.classList.add("pop");
       if (view === "watch") render(true);
     });
     el.addEventListener("click", () => { location.hash = "#/s/" + encodeURIComponent(sym); });
@@ -1116,9 +1127,9 @@ function renderChart(box, view) {
       lp.style.strokeDasharray = len; lp.style.strokeDashoffset = len;
       dots.forEach(c => { c.style.opacity = 0; });
       requestAnimationFrame(() => requestAnimationFrame(() => {
-        lp.style.transition = "stroke-dashoffset .65s ease-out";
+        lp.style.transition = "stroke-dashoffset .65s cubic-bezier(.3, .7, .3, 1)";
         lp.style.strokeDashoffset = 0;
-        dots.forEach(c => { c.style.transition = "opacity .3s ease .55s"; c.style.opacity = 1; });
+        dots.forEach(c => { c.style.transition = "opacity .3s cubic-bezier(.3, .7, .3, 1) .55s"; c.style.opacity = 1; });
         setTimeout(() => { lp.style.strokeDasharray = "none"; }, 750);
       }));
     } catch (e) {}
@@ -1350,6 +1361,7 @@ function showStock(sym) {
     WATCH.has(sym) ? WATCH.delete(sym) : WATCH.add(sym);
     saveWatch();
     paint();
+    star.classList.remove("pop"); void star.offsetWidth; star.classList.add("pop");
     render(true);
   };
   panel.classList.add("open");
