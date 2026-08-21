@@ -7,7 +7,6 @@
 <title>S&amp;P 1500 Momentum</title>
 <link rel="icon" type="image/png" href="favicon-64.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="preconnect" href="https://images.financialmodelingprep.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com">
 <link rel="apple-touch-icon" href="icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -33,12 +32,10 @@
     --flat-bg: #1b1e22;
     --nav-bg: rgba(0,0,0,.92);
     --tabbar-bg: rgba(5,6,7,.9);
-    --tile: #f2f2f4;
     --seg-active: #2a2f34;
     --baseline: #3a4046;
     --glow-up: rgba(0,200,5,.4);
     --glow-down: rgba(255,80,0,.4);
-    --logo-disc: #d8dbde;
     /* pills keep the vivid brand colors in both modes */
     --pill-up: #00c805; --pill-up-fg: #002b01;
     --pill-down: #ff5000; --pill-down-fg: #2e0c00;
@@ -56,9 +53,8 @@
       --down: #cc3d00; --down-bg: #fbe8de;
       --flat-bg: #eceef0;
       --nav-bg: rgba(255,255,255,.92); --tabbar-bg: rgba(250,250,251,.92);
-      --tile: #ffffff; --seg-active: #ffffff; --baseline: #c3c9cf;
+      --seg-active: #ffffff; --baseline: #c3c9cf;
       --glow-up: rgba(0,163,3,.25); --glow-down: rgba(204,61,0,.25);
-      --logo-disc: #eceef0;
     }
   }
   body[data-mode="light"] {
@@ -69,7 +65,7 @@
     --down: #cc3d00; --down-bg: #fbe8de;
     --flat-bg: #eceef0;
     --nav-bg: rgba(255,255,255,.92); --tabbar-bg: rgba(250,250,251,.92);
-    --tile: #ffffff; --seg-active: #ffffff; --baseline: #c3c9cf;
+    --seg-active: #ffffff; --baseline: #c3c9cf;
     --glow-up: rgba(0,163,3,.25); --glow-down: rgba(204,61,0,.25);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -139,6 +135,7 @@
   }
   .colhead .l { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .colhead .m { width: var(--chip-w); text-align: right; margin-left: 18px; }
+  .colhead .m:empty { display: none; }
   .colhead .sp { width: 37px; flex: none; }
 
   /* ---------- card rows ---------- */
@@ -157,24 +154,17 @@
     color: var(--text-3); font-size: .7rem; font-weight: 600;
     font-variant-numeric: tabular-nums;
   }
-  /* one uniform logo treatment: small neutral disc, slightly desaturated mark */
-  .logo {
-    width: 30px; height: 30px; border-radius: 50%; flex: none;
-    background: var(--logo-disc); object-fit: contain; padding: 4px;
-    filter: saturate(.75);
-    opacity: 0; transition: opacity .25s ease;
-  }
-  .logo.ld { opacity: 1; }
-  .mono {
-    width: 30px; height: 30px; border-radius: 50%; flex: none;
-    background: var(--surface-2); color: var(--text-2);
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: .82rem;
-  }
+  /* sector symbol: minimalist line glyph on a muted sector-tinted disc */
   .sic {
     width: 30px; height: 30px; border-radius: 50%; flex: none;
     display: flex; align-items: center; justify-content: center;
+    background: hsl(var(--sh, 210) 30% 17%);
+    color: hsl(var(--sh, 210) 55% 66%);
   }
+  @media (prefers-color-scheme: light) {
+    body:not([data-mode="dark"]) .sic { background: hsl(var(--sh, 210) 45% 92%); color: hsl(var(--sh, 210) 50% 34%); }
+  }
+  body[data-mode="light"] .sic { background: hsl(var(--sh, 210) 45% 92%); color: hsl(var(--sh, 210) 50% 34%); }
   .id { flex: 1; min-width: 0; }
   .id .t { font-weight: 700; font-size: .95rem; letter-spacing: .01em; }
   .rstar {
@@ -236,8 +226,7 @@
   .navbar .star.on { color: #f5b93e; }
 
   .sheader { display: flex; align-items: center; gap: 14px; padding: 18px 16px 4px; }
-  .sheader .logo { width: 56px; height: 56px; border-radius: 50%; padding: 8px; }
-  .sheader .mono { width: 56px; height: 56px; border-radius: 50%; font-size: 1.4rem; }
+  .sheader .sic { width: 52px; height: 52px; }
   .sheader .t { font-size: 1.25rem; font-weight: 700; }
   .sheader .n { color: var(--text-2); font-size: .85rem; }
   .badges { display: flex; gap: 6px; padding: 10px 16px 2px; flex-wrap: wrap; }
@@ -570,7 +559,6 @@ const SECTOR_SHORT = {
   "Communication Services": "Comm Svcs", "Industrials": "Industrials",
   "Real Estate": "Real Estate", "Materials": "Materials", "Energy": "Energy", "Utilities": "Utilities",
 };
-const LOGO = s => "https://images.financialmodelingprep.com/symbol/" + encodeURIComponent(s.replace(".", "-")) + ".png";
 // Quotes and AI are served by the Cloudflare Worker; on the GitHub Pages
 // mirror the API lives cross-origin (the Worker sends open CORS headers).
 const API = location.hostname.endsWith("workers.dev") ? "" : "https://1500.vandyck-med.workers.dev";
@@ -659,24 +647,16 @@ const aiJson = (url, opts) => fetch(url, opts).then(r => r.json());
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 }
-function logoEl(sym, cls) {
-  const img = document.createElement("img");
-  img.className = cls; img.loading = "lazy"; img.alt = ""; img.decoding = "async";
-  img.src = LOGO(sym);
-  img.onload = () => img.classList.add("ld");
-  if (img.complete && img.naturalWidth > 0) img.onload();
-  img.onerror = () => {
-    // stable per-symbol tint so fallbacks look intentional, not broken
-    let h = 7;
-    for (const ch of sym) h = (h * 31 + ch.charCodeAt(0)) % 360;
-    const m = document.createElement("div");
-    m.className = "mono";
-    m.style.background = "hsl(" + h + " 28% 20%)";
-    m.style.color = "hsl(" + h + " 65% 78%)";
-    m.textContent = sym[0];
-    img.replaceWith(m);
-  };
-  return img;
+// Minimalist sector symbol: line glyph on a muted sector-tinted disc.
+// Mode-appropriate colors come from CSS via the --sh hue variable.
+function sectorIcon(sector, size) {
+  const meta = SECTOR_ICONS[sector] || {h: 210, d: '<path d="M4 17l5-6 4 3 7-9"/>'};
+  const el = document.createElement("div");
+  el.className = "sic";
+  el.style.setProperty("--sh", meta.h);
+  const s = size || 15;
+  el.innerHTML = '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + meta.d + "</svg>";
+  return el;
 }
 function chip(v, cfg) {
   if (v == null) return '<span class="chip flat">&mdash;</span>';
@@ -782,7 +762,7 @@ function render(reset) {
       (secShort ? '<span class="nsec"> · ' + esc(secShort) + "</span>" : "") + "</div></div>" +
       valueHtml +
       '<button class="rstar' + (on ? " on" : "") + '" aria-label="watchlist">' + (on ? "★" : "☆") + "</button>";
-    el.insertBefore(logoEl(sym, "logo"), el.children[1]);
+    el.insertBefore(sectorIcon(r[IDX.sector]), el.children[1]);
     el.querySelector(".rstar").addEventListener("click", e => {
       e.stopPropagation();
       const btn = e.currentTarget;
@@ -1096,7 +1076,7 @@ function showStock(sym) {
     '<div class="explain" id="explain" hidden></div>';
 
   body.dataset.sym = sym;
-  body.querySelector(".sheader").prepend(logoEl(sym, "logo"));
+  body.querySelector(".sheader").prepend(sectorIcon(g("sector"), 24));
   aiButton(document.getElementById("aico"), "What does this company do?", () =>
     aiJson(API + "/api/analyze/" + encodeURIComponent(sym))
       .then(d => { if (!d.analysis) throw 0; return d.analysis; }));
@@ -1474,7 +1454,7 @@ function moverRow(sym, q) {
     '<div class="id"><div class="t">' + esc(sym) + '</div><div class="n">' + esc(r ? r[IDX.name] : "") + "</div></div>" +
     '<div class="mspark">' + sparkSVG(q, 84, 32) + "</div>" +
     '<div class="dprice"><div class="p">$' + (q.p >= 1000 ? q.p.toFixed(0) : q.p.toFixed(2)) + '</div><div class="pill ' + cls + '">' + (q.c > 0 ? "+" : "") + q.c.toFixed(2) + "%</div></div>";
-  el.prepend(logoEl(sym, "logo"));
+  el.prepend(sectorIcon(r ? r[IDX.sector] : ""));
   el.addEventListener("click", () => { location.hash = "#/s/" + encodeURIComponent(sym); });
   return el;
 }
@@ -1578,12 +1558,10 @@ function renderSectors() {
   for (const s of DATA.sectors || []) {
     const el = document.createElement("div");
     el.className = "row";
-    const meta = SECTOR_ICONS[s.sector] || {h: 210, d: '<path d="M4 17l5-6 4 3 7-9"/>'};
     el.innerHTML =
-      '<div class="sic" style="background:hsl(' + meta.h + ' 30% 20%)">' +
-        '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="hsl(' + meta.h + ' 65% 68%)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + meta.d + "</svg></div>" +
       '<div class="id"><div class="t">' + esc(s.sector) + '</div><div class="n">#' + s.rank + " · " + s.count + " stocks</div></div>" +
       chip(s.final_score, MODES.voladj);
+    el.prepend(sectorIcon(s.sector, 17));
     el.addEventListener("click", () => {
       document.getElementById("search").value = s.sector;
       query = s.sector;
