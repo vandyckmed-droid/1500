@@ -367,7 +367,7 @@
   .tabbar svg { stroke: currentColor; }
 
   /* stray numerals set outside dedicated value elements */
-  #rkhist > div, #mqearn { font-family: var(--mono); font-size: .7rem; }
+  #rkhist > div { font-family: var(--mono); font-size: .7rem; }
 </style>
 </head>
 <body>
@@ -1125,19 +1125,7 @@ function renderMQ(sym, body) {
         cell("Off 52-wk high", pctv(q.offHigh), "", "qhigh", q.offHigh <= -0.15 ? "down" : "") +
         cell("6-mo drawdown", pctv(q.mdd), "", "qdd", q.mdd <= -0.2 ? "down" : "") +
         cell("Up days, 63d", q.upr != null ? Math.round(q.upr * 100) + "%" : "&mdash;", "", "qup", "") +
-      "</div>" +
-      '<div class="chart-note" id="mqearn" hidden style="padding:8px 16px 0"></div>';
-    // Next earnings date (shown only when the API can serve a current one).
-    fetch(API + "/api/earnings/" + encodeURIComponent(sym))
-      .then(r => (r.ok ? r.json() : null)).then(e => {
-        if (!e || !e.earnings_date || body.dataset.sym !== sym) return;
-        const dte = new Date(e.earnings_date + "T00:00:00Z");
-        if (isNaN(dte) || dte < new Date(Date.now() - 5 * 86400e3)) return;
-        const box = document.getElementById("mqearn");
-        if (!box) return;
-        box.textContent = "Next earnings report: " + day(e.earnings_date);
-        box.hidden = false;
-      }).catch(() => {});
+      "</div>";
   }).catch(() => {
     const el = document.getElementById("mq");
     if (el && body.dataset.sym === sym) el.textContent = "No daily price history available for this symbol.";
@@ -1223,18 +1211,19 @@ function showStock(sym) {
         '<div style="display:flex;justify-content:space-between;color:var(--text-3);font-size:.72rem;padding:4px 0 0">' +
         "<span>#" + ranks[0] + " · " + day(pts[0].as_of) + "</span><span>#" + ranks[ranks.length - 1] + " · latest</span></div>";
     }).catch(() => {});
-  // Live intraday price (falls back silently to the EOD close on failure).
-  fetch(API + "/api/quote/" + encodeURIComponent(sym))
-    .then(r => (r.ok ? r.json() : null)).then(q => {
-      if (!q || q.price == null || body.dataset.sym !== sym) return;
-      const hp = body.querySelector(".hprice");
-      if (!hp) return;
-      hp.querySelector(".pv").textContent = "$" + q.price.toFixed(2);
-      const pd = hp.querySelector(".pd");
-      pd.textContent = (q.change_pct >= 0 ? "+" : "") + q.change_pct.toFixed(2) + "% today";
-      pd.style.color = q.change_pct >= 0 ? "var(--up)" : "var(--down)";
-      pd.style.fontWeight = "600";
-    }).catch(() => {});
+  // Live intraday price from the same spark payload the 1D chart uses (one
+  // upstream fetch, shared cache); falls back silently to the EOD close.
+  fetchSpark(sym).then(q => {
+    if (q.price == null || q.prev_close == null || body.dataset.sym !== sym) return;
+    const hp = body.querySelector(".hprice");
+    if (!hp) return;
+    const chg = (q.price / q.prev_close - 1) * 100;
+    hp.querySelector(".pv").textContent = "$" + q.price.toFixed(2);
+    const pd = hp.querySelector(".pd");
+    pd.textContent = (chg >= 0 ? "+" : "") + chg.toFixed(2) + "% today";
+    pd.style.color = chg >= 0 ? "var(--up)" : "var(--down)";
+    pd.style.fontWeight = "600";
+  }).catch(() => {});
   body.onclick = (e => {
     const c = e.target.closest("[data-key]"); if (!c) return;
     const ex = document.getElementById("explain");

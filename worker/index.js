@@ -1,21 +1,19 @@
-// Slim API in front of the static rankings site.
+// Slim API in front of the static rankings site — six endpoints, one
+// upstream (Yahoo Finance) plus the D1 rank history.
 //
 // Static files in ./docs are served by Cloudflare's asset handling before
 // this Worker runs; only non-asset paths (i.e. /api/*) reach it.
 //
-//   GET /api/summary            → metadata: as_of, counts, sectors
-//   GET /api/top?n=&index=&sector=  → top-N rows (rank order), columnar
-//   GET /api/ticker/:symbol     → one row + rank context
-//   GET /api/search?q=&n=       → symbol/name/sector match, columnar
-//   GET /api/quote/:symbol      → intraday quote proxied from Yahoo Finance
-//   GET /api/earnings/:symbol → next estimated earnings date (Nasdaq, 24h cache)
-//
-// Columnar responses reuse rankings.json's {columns, rows} shape so clients
-// can share one column-index decoder for slim and full payloads.
+//   GET /api/spark/:symbol      → intraday series + live price (1D chart,
+//                                 sheet header quote)
+//   GET /api/today?syms=        → batched day-change mini-quotes (≤40)
+//   GET /api/indices            → S&P 500 / Dow / Nasdaq / Russell mini-quotes
+//   GET /api/deltas             → per-symbol rank change vs previous day (D1)
+//   GET /api/movers?days=&n=    → biggest rank climbs and falls (D1)
+//   GET /api/history/:symbol    → rank-over-time points for one symbol (D1)
 
 const DATA_TTL_MS = 5 * 60 * 1000;
 const QUOTE_TTL_S = 60;
-const MAX_N = 1500;
 
 
 let cached = { data: null, at: 0 };
@@ -50,65 +48,8 @@ async function loadData(env) {
   return data;
 }
 
-const meta = (d) => ({
-  as_of: d.as_of,
-  generated_at: d.generated_at,
-  total: d.rows.length,
-  constituent_counts: d.constituent_counts,
-  ranked_counts: d.ranked_counts,
-});
-
-function clampN(params, dflt) {
-  const n = parseInt(params.get("n"), 10);
-  return Number.isFinite(n) ? Math.min(Math.max(n, 1), MAX_N) : dflt;
-}
-
-function apiTop(d, params) {
-  const idx = params.get("index");
-  const sector = params.get("sector");
-  let rows = d.rows; // already sorted by rank_1500
-  if (idx) rows = rows.filter((r) => r[d._col.index] === idx);
-  if (sector) rows = rows.filter((r) => r[d._col.sector] === sector);
-  rows = rows.slice(0, clampN(params, 25));
-  return json({ ...meta(d), sectors: d.sectors, columns: d.columns, rows });
-}
-
-function apiTicker(d, symbol) {
-  const sym = decodeURIComponent(symbol).toUpperCase();
-  const row = d.rows.find((r) => r[d._col.symbol] === sym);
-  if (!row) return json({ error: "unknown symbol", symbol: sym }, 404);
-  const secName = row[d._col.sector];
-  const sec = (d.sectors || []).find((s) => s.sector === secName);
-  return json({
-    ...meta(d),
-    index_count: d.ranked_counts[row[d._col.index]],
-    sector_count: sec ? sec.count : null,
-    columns: d.columns,
-    rows: [row],
-  });
-}
-
-function apiSearch(d, params) {
-  const q = (params.get("q") || "").trim().toLowerCase();
-  if (!q) return json({ error: "missing q parameter" }, 400);
-  const { symbol, name, sector } = d._col;
-  const rows = [];
-  const max = clampN(params, 25);
-  for (const r of d.rows) {
-    if (
-      String(r[symbol]).toLowerCase().includes(q) ||
-      String(r[name]).toLowerCase().includes(q) ||
-      String(r[sector] || "").toLowerCase().includes(q)
-    ) {
-      rows.push(r);
-      if (rows.length >= max) break;
-    }
-  }
-  return json({ as_of: d.as_of, total: d.rows.length, columns: d.columns, rows });
-}
-
-// One canonical Yahoo chart URL per symbol: quote, spark, and today all
-// request it identically, so the edge cache serves them from one upstream hit.
+// One canonical Yahoo chart URL per symbol: spark and today request it
+// identically, so the edge cache serves them from one upstream hit.
 const yahooChart = (sym) =>
   "https://query1.finance.yahoo.com/v8/finance/chart/" +
   encodeURIComponent(sym.replace(/\./g, "-")) + // BRK.B → BRK-B
@@ -117,32 +58,6 @@ const yahooOpts = {
   headers: { "User-Agent": "Mozilla/5.0 (compatible; sp1500-momentum)" },
   cf: { cacheTtl: QUOTE_TTL_S, cacheEverything: true },
 };
-
-async function apiQuote(symbol) {
-  const sym = decodeURIComponent(symbol).toUpperCase();
-  const res = await fetch(yahooChart(sym), yahooOpts);
-  if (!res.ok) return json({ error: "quote unavailable", symbol: sym }, 502);
-  const body = await res.json();
-  const m = body?.chart?.result?.[0]?.meta;
-  const price = m?.regularMarketPrice;
-  const prev = m?.chartPreviousClose ?? m?.previousClose;
-  if (price == null || prev == null)
-    return json({ error: "quote unavailable", symbol: sym }, 502);
-  return json(
-    {
-      symbol: sym,
-      price,
-      prev_close: prev,
-      change: +(price - prev).toFixed(4),
-      change_pct: +((price / prev - 1) * 100).toFixed(3),
-      market_time: m.regularMarketTime ?? null,
-      currency: m.currency ?? "USD",
-      source: "yahoo",
-    },
-    200,
-    { "Cache-Control": "public, max-age=" + QUOTE_TTL_S }
-  );
-}
 
 async function apiSpark(symbol) {
   const sym = decodeURIComponent(symbol).toUpperCase();
@@ -175,7 +90,7 @@ async function apiSpark(symbol) {
 
 // Batched day-change quotes for the list view. Capped at 40 symbols per call
 // (the free plan allows 50 subrequests per request); each symbol's upstream
-// fetch is shared with /api/quote and /api/spark via the edge cache.
+// fetch is shared with /api/spark via the edge cache.
 // Parse one Yahoo chart response into a compact quote + downsampled series.
 function miniQuote(body) {
   const r0 = body?.chart?.result?.[0];
@@ -227,27 +142,6 @@ async function apiIndices() {
   }));
   out.sort((a, b) => a.order - b.order);
   return json({ indices: out }, 200, { "Cache-Control": "public, max-age=60" });
-}
-
-// Next estimated earnings date, scraped from Nasdaq's analyst API and cached
-// a day at the edge. Returns {earnings_date: null} when Nasdaq has no date or
-// blocks the request, so clients can hide the row.
-async function apiEarnings(symbol) {
-  const sym = decodeURIComponent(symbol).toUpperCase();
-  let date = null;
-  try {
-    const res = await fetch("https://api.nasdaq.com/api/analyst/" + encodeURIComponent(sym) + "/earnings-date", {
-      headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
-      cf: { cacheTtl: 86400, cacheEverything: true },
-    });
-    if (res.ok) {
-      const d = await res.json();
-      const txt = (d?.data?.reportText || "") + " " + (d?.data?.announcement || "");
-      const m = txt.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-      if (m) date = m[3] + "-" + m[1] + "-" + m[2];
-    }
-  } catch (e) {}
-  return json({ symbol: sym, earnings_date: date }, 200, { "Cache-Control": "public, max-age=86400" });
 }
 
 /* ---------- rank history (D1) ---------- */
@@ -381,21 +275,12 @@ export default {
     if (request.method !== "GET") return json({ error: "GET only" }, 405);
 
     try {
-      const quote = path.match(/^\/api\/quote\/([^/]+)$/);
-      if (quote) return await apiQuote(quote[1]);
       const spark = path.match(/^\/api\/spark\/([^/]+)$/);
       if (spark) return await apiSpark(spark[1]);
       if (path === "/api/today") return await apiToday(url.searchParams);
       if (path === "/api/indices") return await apiIndices();
-      const earn = path.match(/^\/api\/earnings\/([^/]+)$/);
-      if (earn) return await apiEarnings(earn[1]);
 
       const d = await loadData(env);
-      if (path === "/api/summary") return json({ ...meta(d), sectors: d.sectors });
-      if (path === "/api/top") return apiTop(d, url.searchParams);
-      if (path === "/api/search") return apiSearch(d, url.searchParams);
-      const ticker = path.match(/^\/api\/ticker\/([^/]+)$/);
-      if (ticker) return apiTicker(d, ticker[1]);
       if (path === "/api/deltas") return await apiDeltas(env, d);
       if (path === "/api/movers") return await apiMovers(env, d, url.searchParams);
       const hist = path.match(/^\/api\/history\/([^/]+)$/);
@@ -405,17 +290,11 @@ export default {
         {
           error: "unknown endpoint",
           endpoints: [
-            "/api/summary",
-            "/api/top?n=&index=&sector=",
-            "/api/ticker/:symbol",
-            "/api/search?q=&n=",
-            "/api/quote/:symbol",
             "/api/spark/:symbol",
             "/api/today?syms=",
             "/api/deltas",
             "/api/movers?days=&n=",
             "/api/history/:symbol?limit=",
-            "/api/earnings/:symbol",
           ],
         },
         404
