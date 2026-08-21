@@ -523,6 +523,7 @@
   </nav>
 </div>
 
+<script src="stats.js?v=1"></script>
 <script>
 "use strict";
 const MODES = {
@@ -726,23 +727,10 @@ async function computeBasket(syms, key, w) {
     const series = await Promise.all(syms.map(retSeries));
     const maps = [], ws = [];
     series.forEach((m, i) => { if (m && w[syms[i]] > 0) { maps.push(m); ws.push(w[syms[i]]); } });
-    if (!maps.length) throw new Error("no data");
-    let dates = Object.keys(maps[0]);
-    for (let k = 1; k < maps.length; k++) dates = dates.filter(dt => dt in maps[k]);
-    dates.sort();
-    if (dates.length < 40) throw new Error("insufficient overlap");
-    const tot = ws.reduce((a, b) => a + b, 0);
-    const ret = {};
-    for (const dt of dates) {
-      let s = 0;
-      for (let k = 0; k < maps.length; k++) s += (ws[k] / tot) * maps[k][dt];
-      ret[dt] = s;
-    }
-    const vals = dates.map(dt => ret[dt]);
-    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-    const varr = vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (vals.length - 1);
+    const b = Stats.basket(maps, ws);
+    if (!b || b.sigma == null) throw new Error("insufficient data");
     if (run !== basketRun) return;
-    BASKET = {key, sigma: Math.sqrt(varr * 252), ret, busy: false};
+    BASKET = {key, sigma: b.sigma, ret: b.ret, busy: false};
   } catch (e) {
     if (run !== basketRun) return;
     BASKET = {key, sigma: null, ret: "err", busy: false};
@@ -751,31 +739,14 @@ async function computeBasket(syms, key, w) {
 }
 
 function statsVsBasket(m) {
-  const b = BASKET.ret;
-  if (!b || b === "err" || BASKET.sigma == null) return null;
-  const dates = Object.keys(m).filter(dt => dt in b);
-  if (dates.length < 40) return null;
-  const n = dates.length;
-  let mc = 0, mb = 0;
-  for (const dt of dates) { mc += m[dt]; mb += b[dt]; }
-  mc /= n; mb /= n;
-  let vc = 0, vb = 0, cv = 0;
-  for (const dt of dates) {
-    const xc = m[dt] - mc, xb = b[dt] - mb;
-    vc += xc * xc; vb += xb * xb; cv += xc * xb;
-  }
-  if (!(vc > 0) || !(vb > 0)) return null;
-  const rho = cv / Math.sqrt(vc * vb);
-  const sc = Math.sqrt((vc / (n - 1)) * 252);
-  return {beta: rho * sc / BASKET.sigma, rho, sc};
+  if (!BASKET.ret || BASKET.ret === "err") return null;
+  return Stats.beta(m, BASKET.ret, BASKET.sigma);
 }
 // Change in basket vol from a w-sized position in the candidate — pure
 // arithmetic on cached σ and ρ, so the slider never touches the network.
 function dVol(st) {
-  const sb = BASKET.sigma;
-  if (sb == null || !st) return null;
-  const w = POSW, k = 1 - w;
-  return Math.sqrt(k * k * sb * sb + w * w * st.sc * st.sc + 2 * w * k * st.rho * sb * st.sc) - sb;
+  if (!st) return null;
+  return Stats.blendVol(BASKET.sigma, st.sc, st.rho, POSW);
 }
 
 let betaRun = 0;
@@ -1147,25 +1118,16 @@ function renderMQ(sym, body) {
   fetchPrices(sym).then(d => {
     const el = document.getElementById("mq");
     if (!el || body.dataset.sym !== sym) return;
-    const closes = d.close;
-    const last = closes[closes.length - 1];
-    const hi52 = Math.max(...closes.slice(-252));
-    const offHigh = last / hi52 - 1;
-    const w6 = closes.slice(-126);
-    let peak = w6[0], mdd = 0;
-    for (const c of w6) { if (c > peak) peak = c; mdd = Math.min(mdd, c / peak - 1); }
-    const w63 = closes.slice(-64);
-    let upDays = 0, upTot = 0;
-    for (let i = 1; i < w63.length; i++) { upTot++; if (w63[i] > w63[i - 1]) upDays++; }
-    const upr = upTot ? upDays / upTot : null;
-    MQ = {sym, last, hi52, offHigh, mdd, upDays, upTot, upr};
+    const q = Stats.momentumQuality(d.close);
+    if (!q) throw new Error("no closes");
+    MQ = Object.assign({sym}, q);
     el.className = "";
     el.style.padding = "0";
     el.innerHTML =
       '<div class="strip">' +
-        cell("Off 52-wk high", pctv(offHigh), "", "qhigh", offHigh <= -0.15 ? "down" : "") +
-        cell("6-mo drawdown", pctv(mdd), "", "qdd", mdd <= -0.2 ? "down" : "") +
-        cell("Up days, 63d", upr != null ? Math.round(upr * 100) + "%" : "&mdash;", "", "qup", "") +
+        cell("Off 52-wk high", pctv(q.offHigh), "", "qhigh", q.offHigh <= -0.15 ? "down" : "") +
+        cell("6-mo drawdown", pctv(q.mdd), "", "qdd", q.mdd <= -0.2 ? "down" : "") +
+        cell("Up days, 63d", q.upr != null ? Math.round(q.upr * 100) + "%" : "&mdash;", "", "qup", "") +
       "</div>" +
       '<div class="chart-note" id="mqearn" hidden style="padding:8px 16px 0"></div>';
     // Next earnings date (shown only when the API can serve a current one).
@@ -1347,65 +1309,19 @@ async function computeHRP(syms, key) {
   if (HRPW.busy) return;
   HRPW = {key, w: null, busy: true};
   try {
-    // Same per-symbol daily log-return maps the correlation gate uses.
+    // Same per-symbol daily log-return maps the correlation gate uses;
+    // the HRP construction itself (Lopez de Prado) lives in Stats.hrp.
     const series = await Promise.all(syms.map(retSeries));
     const okIdx = [], maps = [];
     series.forEach((m, i) => { if (m) { okIdx.push(i); maps.push(m); } });
     if (okIdx.length < 2) throw new Error("insufficient data");
-    let dates = Object.keys(maps[0]);
-    for (let k = 1; k < maps.length; k++) dates = dates.filter(dt => dt in maps[k]);
-    dates.sort();
-    dates = dates.slice(-126); // ~6 months of overlapping days
-    if (dates.length < 40) throw new Error("insufficient overlap");
+    const dates = Stats.alignDates(maps).slice(-126); // ~6 months of overlapping days
+    if (dates.length < Stats.MIN_OVERLAP) throw new Error("insufficient overlap");
     const rets = maps.map(m => dates.map(dt => m[dt]));
-    const nA = rets.length, T = rets[0].length;
-    const mean = rets.map(r => r.reduce((a, b) => a + b, 0) / T);
-    const cov = Array.from({length: nA}, () => new Array(nA));
-    for (let a = 0; a < nA; a++) for (let b = a; b < nA; b++) {
-      let s = 0; for (let t = 0; t < T; t++) s += (rets[a][t] - mean[a]) * (rets[b][t] - mean[b]);
-      cov[a][b] = cov[b][a] = s / (T - 1);
-    }
-    // Correlation-distance single-linkage clustering; the merge order gives the
-    // quasi-diagonal ordering (Lopez de Prado's HRP construction).
-    const dist = (a, b) => Math.sqrt(Math.max(0, 0.5 * (1 - cov[a][b] / Math.sqrt(cov[a][a] * cov[b][b]))));
-    let clusters = Array.from({length: nA}, (_, i) => [i]);
-    while (clusters.length > 1) {
-      let bi = 0, bj = 1, bd = Infinity;
-      for (let i = 0; i < clusters.length; i++) for (let j = i + 1; j < clusters.length; j++) {
-        let d = Infinity;
-        for (const a of clusters[i]) for (const b of clusters[j]) d = Math.min(d, dist(a, b));
-        if (d < bd) { bd = d; bi = i; bj = j; }
-      }
-      clusters[bi] = clusters[bi].concat(clusters[bj]);
-      clusters.splice(bj, 1);
-    }
-    const order = clusters[0];
-    // Recursive bisection with inverse-variance allocations.
-    const w = new Array(nA).fill(1);
-    const clusterVar = idxs => {
-      const ivp = idxs.map(i => 1 / cov[i][i]);
-      const s = ivp.reduce((a, b) => a + b, 0);
-      const ww = ivp.map(v => v / s);
-      let v = 0;
-      for (let a = 0; a < idxs.length; a++) for (let b = 0; b < idxs.length; b++)
-        v += ww[a] * ww[b] * cov[idxs[a]][idxs[b]];
-      return v;
-    };
-    const stack = [order];
-    while (stack.length) {
-      const cl = stack.pop();
-      if (cl.length < 2) continue;
-      const half = Math.floor(cl.length / 2);
-      const c1 = cl.slice(0, half), c2 = cl.slice(half);
-      const v1 = clusterVar(c1), v2 = clusterVar(c2);
-      const alpha = 1 - v1 / (v1 + v2);
-      for (const i of c1) w[i] *= alpha;
-      for (const i of c2) w[i] *= 1 - alpha;
-      stack.push(c1, c2);
-    }
-    const tot = w.reduce((a, b) => a + b, 0);
+    const w = Stats.hrp(rets);
+    if (!w) throw new Error("hrp failed");
     const out = {};
-    okIdx.forEach((origI, k) => { out[syms[origI]] = w[k] / tot; });
+    okIdx.forEach((origI, k) => { out[syms[origI]] = w[k]; });
     for (const s of syms) if (!(s in out)) out[s] = 0; // no price data: sized at zero, not stuck loading
     HRPW = {key, w: out, busy: false};
   } catch (e) {
@@ -1453,13 +1369,7 @@ async function computePairCorr(syms, key) {
   PSTAT = {key, corr: undefined, busy: true};
   try {
     const series = await Promise.all(syms.map(retSeries));
-    const maps = series.filter(Boolean);
-    let s = 0, n = 0;
-    for (let i = 0; i < maps.length; i++) for (let j = i + 1; j < maps.length; j++) {
-      const c = corrOf(maps[i], maps[j]);
-      if (c != null) { s += c; n++; }
-    }
-    PSTAT = {key, corr: n ? s / n : null, busy: false};
+    PSTAT = {key, corr: Stats.avgPairCorr(series.filter(Boolean)), busy: false};
   } catch (e) {
     PSTAT = {key, corr: null, busy: false};
   }
@@ -1496,31 +1406,13 @@ async function retSeries(sym) {
   if (sym in RETS) return RETS[sym];
   try {
     const d = await fetchPrices(sym);
-    const m = {};
-    const from = Math.max(1, d.close.length - 140);
-    for (let j = from; j < d.close.length; j++)
-      m[d.dates[j]] = Math.log(d.close[j] / d.close[j - 1]);
-    RETS[sym] = Object.keys(m).length > 40 ? m : null;
+    RETS[sym] = Stats.logReturnMap(d.dates, d.close, 140);
   } catch (e) {
     RETS[sym] = null;
   }
   return RETS[sym];
 }
-function corrOf(a, b) {
-  if (!a || !b) return null;
-  const dates = Object.keys(a).filter(dt => dt in b);
-  if (dates.length < 40) return null;
-  const n = dates.length;
-  let ma = 0, mb = 0;
-  for (const dt of dates) { ma += a[dt]; mb += b[dt]; }
-  ma /= n; mb /= n;
-  let sab = 0, sa = 0, sb = 0;
-  for (const dt of dates) {
-    const xa = a[dt] - ma, xb = b[dt] - mb;
-    sab += xa * xb; sa += xa * xa; sb += xb * xb;
-  }
-  return sa && sb ? sab / Math.sqrt(sa * sb) : null;
-}
+const corrOf = Stats.corr;
 
 function buildAB() {
   abRunId++; // rebuilding the sheet orphans any in-flight run

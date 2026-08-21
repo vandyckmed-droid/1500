@@ -51,7 +51,12 @@ const API_STUBS = [
   [/\/api\/movers/, { up: [], down: [] }],
   [/\/api\/today/, { quotes: {} }],
   [/\/api\/quote\//, { price: null }],
-  [/\/api\/spark\//, { closes: [] }],
+  [/\/api\/spark\//, (() => {
+    // a valid intraday series so the 1D chart path renders deterministically
+    const closes = [], times = [];
+    for (let i = 0; i < 30; i++) { closes.push(100 + Math.sin(i / 4) * 2); times.push(1755690000 + i * 300); }
+    return { closes, times, prev_close: 99.5, price: closes[29], gmtoffset: -14400 };
+  })()],
   [/\/api\/history\//, { points: [] }],
   [/\/api\/earnings\//, { symbol: "X", earnings_date: null }],
 ];
@@ -112,7 +117,8 @@ function check(name, ok, detail) {
   await page.locator("#list .row").first().click();
   const mq = await page.waitForSelector("#mq .strip", { timeout: 20000 }).catch(() => null);
   check("momentum quality computes", !!mq);
-  check("price chart draws", await page.locator("#chartbox svg.chartsvg").count() > 0);
+  const chart = await page.waitForSelector("#chartbox svg.chartsvg", { timeout: 15000 }).catch(() => null);
+  check("price chart draws", !!chart);
 
   // 3. Watchlist portfolio stats (basket vol headline from synthetic prices)
   await page.evaluate(() => { location.hash = "#/rankings"; });
