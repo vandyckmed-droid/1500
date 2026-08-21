@@ -236,6 +236,7 @@
   .sheader .t { font: 600 1.35rem/1.15 var(--serif); }
   .sheader .n { color: var(--text-2); font-size: .84rem; }
   .badges { padding: 8px 16px 0; color: var(--text-3); font-size: .64rem; font-weight: 600; text-transform: uppercase; letter-spacing: .09em; }
+  .badges .badge + .badge::before { content: "·"; margin: 0 7px; }
   /* ---------- price chart ---------- */
   .chartbox { margin: 4px 16px 0; }
   .chart-readout { display: flex; align-items: baseline; gap: 8px; min-height: 22px; padding: 2px 0 4px; }
@@ -244,6 +245,12 @@
   .chart-readout .cr-delta.up { color: var(--up); } .chart-readout .cr-delta.down { color: var(--down); }
   .chart-readout .cr-sub { color: var(--text-3); font: 400 .72rem var(--mono); margin-left: auto; }
   .chartsvg { display: block; width: 100%; height: 190px; touch-action: pan-y; }
+  /* axis context: window high/low at the right edge, baseline price at left */
+  .chwrap { position: relative; }
+  .chax { position: absolute; font: 400 .62rem var(--mono); color: var(--text-3); pointer-events: none; }
+  .chax.hi { top: 1px; right: 2px; }
+  .chax.lo { bottom: 1px; right: 2px; }
+  .chax.base { left: 2px; }
   .ranges { display: flex; gap: 6px; padding: 8px 0 0; }
   .ranges button {
     flex: 1; background: none; border: none; color: var(--text-3); border-radius: 0;
@@ -391,6 +398,12 @@
   }
   .tabbar button.active { color: var(--text); }
   .tabbar svg { stroke: currentColor; }
+
+  /* 52-week range rail: ink dot on a hairline track, mono ends */
+  .rrail { display: flex; align-items: center; gap: 8px; margin: 4px 16px 10px; }
+  .rrail .rl { font: 400 .64rem var(--mono); color: var(--text-3); }
+  .rrail .track { flex: 1; height: 2px; background: var(--hairline); position: relative; }
+  .rrail .track i { position: absolute; top: -2.5px; width: 7px; height: 7px; border-radius: 50%; background: var(--text); transform: translateX(-50%); }
 
   /* stray numerals set outside dedicated value elements */
   #rkhist > div { font-family: var(--mono); font-size: .7rem; }
@@ -550,7 +563,7 @@
   </nav>
 </div>
 
-<script src="stats.js?v=1"></script>
+<script src="stats.js?v=2"></script>
 <script>
 "use strict";
 const MODES = {
@@ -1035,12 +1048,19 @@ function renderChart(box, view) {
   for (let i = 0; i < closes.length; i++) path += (i ? "L" : "M") + x(i).toFixed(1) + " " + y(closes[i]).toFixed(1);
   const delta = last / first - 1;
 
+  // Axis context: the window's high and low as quiet mono labels at the
+  // right edge (HTML overlays — text inside the stretched viewBox would
+  // distort), and the dashed baseline labeled with its price at the left.
+  const fmtP = v => "$" + (v >= 1000 ? v.toFixed(0) : v.toFixed(2));
+  const hiV = Math.max(...closes), loV = Math.min(...closes);
+  const basePct = (y(first) / H) * 100;
   box.innerHTML =
     '<div class="chart-readout">' +
       '<span class="cr-main" id="crMain">$' + last.toFixed(2) + "</span>" +
       '<span class="cr-delta ' + (up ? "up" : "down") + '" id="crDelta">' + pctv(delta) + "</span>" +
       '<span class="cr-sub" id="crSub">' + view.sub + "</span>" +
     "</div>" +
+    '<div class="chwrap">' +
     '<svg class="chartsvg" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
       '<line x1="0" x2="' + W + '" y1="' + y(first).toFixed(1) + '" y2="' + y(first).toFixed(1) + '" stroke="var(--baseline)" stroke-width="1" stroke-dasharray="3,6" vector-effect="non-scaling-stroke"/>' +
       '<path class="chline ' + (up ? "up" : "down") + '" d="' + path + '" fill="none" stroke="' + col + '" stroke-width="2" vector-effect="non-scaling-stroke"/>' +
@@ -1051,6 +1071,11 @@ function renderChart(box, view) {
       '<line id="crLine" x1="0" x2="0" y1="0" y2="' + H + '" stroke="var(--text-3)" stroke-width="1" visibility="hidden" vector-effect="non-scaling-stroke"/>' +
       '<circle id="crDot" r="7" fill="' + col + '" visibility="hidden"/>' +
     "</svg>" +
+    '<span class="chax hi">' + fmtP(hiV) + "</span>" +
+    '<span class="chax lo">' + fmtP(loV) + "</span>" +
+    (basePct > 12 && basePct < 88 ?
+      '<span class="chax base" style="top:calc(' + basePct.toFixed(1) + '% - .55em)">' + fmtP(first) + "</span>" : "") +
+    "</div>" +
     '<div class="ranges">' + RANGES.map(r =>
       '<button data-range="' + r.k + '"' + (r.k === rangeKey ? ' class="active"' : "") + ">" + r.k + "</button>").join("") + "</div>";
 
@@ -1160,7 +1185,15 @@ function renderMQ(sym, body) {
     MQ = Object.assign({sym}, q);
     el.className = "";
     el.style.padding = "0";
+    // 52-week range rail: where today's close sits between the year's low
+    // and high — an ink dot on a hairline track, ends labeled in mono.
+    const fp = v => "$" + (v >= 1000 ? v.toFixed(0) : v.toFixed(2));
+    const span = q.hi52 - q.lo52;
+    const pos = span > 0 ? Math.max(0, Math.min(100, ((q.last - q.lo52) / span) * 100)) : 50;
     el.innerHTML =
+      '<div class="rrail"><span class="rl">' + fp(q.lo52) + '</span>' +
+        '<span class="track"><i style="left:' + pos.toFixed(1) + '%"></i></span>' +
+        '<span class="rl">' + fp(q.hi52) + "</span></div>" +
       '<div class="strip">' +
         cell("Off 52-wk high", pctv(q.offHigh), "", "qhigh", q.offHigh <= -0.15 ? "down" : "") +
         cell("6-mo drawdown", pctv(q.mdd), "", "qdd", q.mdd <= -0.2 ? "down" : "") +
