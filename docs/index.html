@@ -399,6 +399,20 @@
   .tabbar button.active { color: var(--text); }
   .tabbar svg { stroke: currentColor; }
 
+  /* waiting states: hairline placeholder rows in place of "Loading…" —
+     static ink-and-paper skeletons, nothing shimmers */
+  .skrow { display: flex; align-items: center; gap: 10px; padding: 15px 16px; border-top: 1px solid var(--hairline); }
+  .skrow:first-child { border-top: none; }
+  .skrow i { display: block; height: 9px; background: var(--hairline); border-radius: 2px; flex: none; }
+  .skrow .a { width: 1.4em; } .skrow .b { width: 22px; height: 22px; border-radius: 50%; }
+  .skrow .c { width: 34%; } .skrow .d { flex: 1; opacity: 0; } .skrow .e { width: 3.6rem; }
+  .skchart { height: 190px; position: relative; border-bottom: 1px solid var(--hairline); }
+  .skchart::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed var(--hairline); }
+  /* designed empty states: a serif title over one quiet line of guidance */
+  .empty { padding: 46px 24px; text-align: center; }
+  .empty .t { font: 600 1.05rem var(--serif); margin-bottom: 6px; }
+  .empty .d { color: var(--text-3); font-size: .82rem; line-height: 1.5; max-width: 36ch; margin: 0 auto; }
+
   /* 52-week range rail: ink dot on a hairline track, mono ends */
   .rrail { display: flex; align-items: center; gap: 8px; margin: 4px 16px 10px; }
   .rrail .rl { font: 400 .64rem var(--mono); color: var(--text-3); }
@@ -427,7 +441,7 @@
     <div class="livestatus" id="livestatus" hidden>Live quotes unavailable right now — showing the latest close.</div>
     <div class="ixrow" id="ixrow"></div>
     <div class="sec-label">Movers today &middot; top 150 by rank</div>
-    <div id="dmovers"><div class="chart-note" style="padding:10px 16px">Loading&hellip;</div></div>
+    <div id="dmovers"><div class="skrow"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i><i class="e"></i></div><div class="skrow"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i><i class="e"></i></div><div class="skrow"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i><i class="e"></i></div></div>
     <div class="sec-label">Watchlist</div>
     <div id="dwatch"></div>
     <div class="sec-label">Rank movers &middot; vs previous day</div>
@@ -464,7 +478,7 @@
       <div class="colhead"><span class="l" id="modelabel">VAR — reward per risk</span><span class="m" id="col1">12M</span><span class="m" id="col2">6M</span><span class="sp"></span></div>
     </div>
     <div class="ptr" id="hptr">Refreshing&hellip;</div>
-    <div id="status">Loading&hellip;</div>
+    <div id="status" style="padding:0"><div class="skrow"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i><i class="e"></i></div><div class="skrow"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i><i class="e"></i></div><div class="skrow"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i><i class="e"></i></div><div class="skrow"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i><i class="e"></i></div><div class="skrow"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i><i class="e"></i></div><div class="skrow"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i><i class="e"></i></div><div class="skrow"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i><i class="e"></i></div><div class="skrow"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i><i class="e"></i></div><div class="skrow"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i><i class="e"></i></div></div>
     <div id="wbar" hidden>
       <div class="wbarrow">
         <span class="lbl">Suggested weights</span>
@@ -584,6 +598,12 @@ const SECTOR_SHORT = {
 // mirror the API lives cross-origin (the Worker sends open CORS headers).
 const API = location.hostname.endsWith("workers.dev") ? "" : "https://1500.vandyck-med.workers.dev";
 
+// Waiting and empty states: static hairline placeholder rows while data
+// loads, and a serif title over one line of guidance when there is none.
+const skelRows = n => Array.from({length: n}, () =>
+  '<div class="skrow"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i><i class="e"></i></div>').join("");
+const emptyState = (t, d) => '<div class="empty"><div class="t">' + t + '</div><div class="d">' + d + "</div></div>";
+
 let DATA = null, IDX = {}, BYSYM = {}, view = "all", mode = "voladj", query = "", shown = 0, current = [];
 let DELTAS = null; // symbol -> rank change vs previous day (positive = climbed)
 const WATCH = new Set((() => { try { return JSON.parse(localStorage.getItem("watch") || "[]"); } catch (e) { return []; } })());
@@ -641,7 +661,11 @@ function loadData(first) {
       if (x && x.deltas && Object.keys(x.deltas).length) { DELTAS = x.deltas; render(true); }
     }).catch(() => {});
   }).catch(e => {
-    if (first) document.getElementById("status").textContent = "Failed to load: " + e.message;
+    if (first) {
+      const st = document.getElementById("status");
+      st.style.padding = "";
+      st.textContent = "Failed to load: " + e.message;
+    }
   });
 }
 loadData(true);
@@ -902,12 +926,15 @@ function render(reset) {
   const list = document.getElementById("list");
   list.appendChild(frag);
   if (!current.length && mode === "beta") {
-    list.innerHTML = '<div class="chart-note" style="padding:28px 16px;text-align:center">' +
-      (!WATCH.size ? "Star a few names first — beta is measured against your watchlist basket." :
-        view === "watch" ? "Your watchlist members are the basket itself. Switch to the 1500 tab to size candidates against it." :
-        "No candidates match here.") + "</div>";
+    list.innerHTML = !WATCH.size
+      ? emptyState("No basket yet", "Beta is measured against your watchlist. Star a few names first — or auto-build a list by criteria.")
+      : view === "watch"
+        ? emptyState("This is the basket itself", "Your watchlist members form the basket. Switch to the 1500 tab to size candidates against it.")
+        : emptyState("No candidates here", "No ranked names outside your basket match this view.");
   } else if (!current.length && view === "watch") {
-    list.innerHTML = '<div class="chart-note" style="padding:28px 16px;text-align:center">Nothing here yet. Open a stock and tap the ☆ to add it to your watchlist.</div>';
+    list.innerHTML = emptyState("An empty watchlist", "Open a stock and tap the ☆ to follow it, or use Auto-build below to fill the list by criteria.");
+  } else if (!current.length && query) {
+    list.innerHTML = emptyState("No matches", "Nothing in this view matches “" + esc(query) + "”. Try a symbol, a company name, or a sector.");
   }
   document.getElementById("more").hidden = shown >= current.length;
   const wst = document.getElementById("wstats");
@@ -1166,7 +1193,7 @@ function showRange(box, sym, key) {
 function loadChart(sym) {
   const box = document.getElementById("chartbox");
   if (!box) return;
-  box.innerHTML = '<div class="chart-note">Loading chart&hellip;</div>';
+  box.innerHTML = '<div class="skchart"></div>';
   // Yahoo-style: open on the intraday view (falls back to 1Y if unavailable).
   showRange(box, sym, "1D");
 }
@@ -1201,7 +1228,11 @@ function renderMQ(sym, body) {
       "</div>";
   }).catch(() => {
     const el = document.getElementById("mq");
-    if (el && body.dataset.sym === sym) el.textContent = "No daily price history available for this symbol.";
+    if (el && body.dataset.sym === sym) {
+      el.className = "chart-note";
+      el.style.padding = "4px 16px 8px";
+      el.textContent = "No daily price history available for this symbol.";
+    }
   });
 }
 
@@ -1250,7 +1281,7 @@ function showStock(sym) {
     section("VAR — volatility-adjusted return", vars) +
     section("Return (skips latest month)", rets) +
     section("Volatility", vols) +
-    section("Momentum quality", '<div id="mq" class="chart-note" style="padding:4px 16px 8px">Loading&hellip;</div>') +
+    section("Momentum quality", '<div id="mq">' + skelRows(1) + "</div>") +
     section("Rank history", '<div id="rkhist" class="chart-note" style="padding:4px 16px 0">Loading&hellip;</div>') +
     '<div class="explain" id="explain" hidden></div>';
 
