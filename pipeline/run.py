@@ -158,15 +158,8 @@ def main(argv: list[str] | None = None) -> int:
     # publishing NaN/Infinity literals, which are invalid JSON.
     blob = json.dumps(payload, separators=(",", ":"), allow_nan=False)
     out.write_text(blob)
-
-    # Daily snapshot archive: one file per as-of date plus a date index, so the
-    # site can later show how rankings evolved. Re-runs on the same date just
-    # overwrite that day's snapshot.
-    hist_dir = out.parent / "history"
-    hist_dir.mkdir(exist_ok=True)
-    (hist_dir / f"{as_of}.json").write_text(blob)
-    dates = sorted(p.stem for p in hist_dir.glob("*.json") if p.stem != "index")
-    (hist_dir / "index.json").write_text(json.dumps({"dates": dates}))
+    # (Rank history is recorded by the Cloudflare Worker into D1 each morning;
+    # no file snapshots are kept in the repo.)
 
     # Per-ticker price series for the site's charts. These are large and
     # regenerated whole every day, so they live on the orphan 'data' branch
