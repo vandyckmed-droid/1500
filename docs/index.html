@@ -286,6 +286,9 @@
 
   /* ---------- dashboard (Today) ---------- */
   .mktline { padding: 10px 16px 0; color: var(--text-3); font: 500 .66rem var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+  /* honest failure state: a quiet advisory line, never silent dashes */
+  .livestatus { margin: 8px 16px 0; padding: 5px 0; border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); color: var(--text-2); font-size: .74rem; font-style: italic; }
+  .livestatus[hidden] { display: none; }
   .ixrow { display: flex; overflow-x: auto; padding: 10px 16px 4px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
   .ixrow::-webkit-scrollbar { display: none; }
   .ixcard { flex: none; width: 128px; background: none; border-left: 1px solid var(--hairline); padding: 2px 12px; }
@@ -385,6 +388,7 @@
     </div>
     <div class="ptr" id="dptr">Refreshing&hellip;</div>
     <div class="mktline" id="mktline"></div>
+    <div class="livestatus" id="livestatus" hidden>Live quotes unavailable right now — showing the latest close.</div>
     <div class="ixrow" id="ixrow"></div>
     <div class="sec-label">Movers today &middot; top 150 by rank</div>
     <div id="dmovers"><div class="chart-note" style="padding:10px 16px">Loading&hellip;</div></div>
@@ -666,6 +670,17 @@ function rowsFor() {
 /* live day-change quotes for the Today mode (batched, 60s freshness) */
 const TODAYQ = {};
 let todayFetching = false, todayCbs = [];
+// Honest failure state: when live quotes come back empty, say so instead of
+// leaving a screen of dashes. One flag, one advisory line, cleared on the
+// next successful batch.
+let LIVEOK = true;
+function setLiveOK(ok) {
+  if (ok === LIVEOK) return;
+  LIVEOK = ok;
+  const el = document.getElementById("livestatus");
+  if (el) el.hidden = ok;
+  if (mode === "today") render(true);
+}
 function ensureToday(syms, cb) {
   const stale = syms.filter(s => !TODAYQ[s] || Date.now() - TODAYQ[s].at > 60 * 1000);
   if (!stale.length) { if (cb) cb(); return; }
@@ -681,6 +696,7 @@ function ensureToday(syms, cb) {
       .catch(() => { const at = Date.now(); for (const s of ch) if (!TODAYQ[s]) TODAYQ[s] = {q: null, at}; })
   )).finally(() => {
     todayFetching = false;
+    setLiveOK(stale.some(s => TODAYQ[s] && TODAYQ[s].q));
     if (mode === "today") render(true);
     todayCbs.splice(0).forEach(f => { try { f(); } catch (e) {} });
   });
@@ -863,7 +879,8 @@ function render(reset) {
     wst.hidden = false;
     renderPortfolioStats(wst, current);
   } else wst.hidden = true;
-  document.getElementById("modelabel").textContent = cfg.label;
+  document.getElementById("modelabel").textContent =
+    cfg.label + (mode === "today" && !LIVEOK ? " — live data down" : "");
   if (mode === "today" && current.length) ensureToday(current.map(r => r[IDX.symbol]));
   if (mode === "beta" && WATCH.size) {
     ensureBasket();
@@ -1259,7 +1276,8 @@ function renderAbout() {
   document.getElementById("aboutdata").innerHTML =
     '<div class="kv"><span>Prices as of</span><b>' + DATA.as_of + "</b></div>" +
     '<div class="kv"><span>Stocks ranked</span><b>' + DATA.rows.length + " of " + (c.sp500 + c.sp400 + c.sp600) + "</b></div>" +
-    '<div class="kv"><span>Last update</span><b>' + DATA.generated_at.replace("T", " ").replace("Z", " UTC") + "</b></div>";
+    '<div class="kv"><span>Last validated update</span><b>' + DATA.generated_at.replace("T", " ").replace("Z", " UTC") + "</b></div>" +
+    '<div class="hint" style="padding:8px 0 0">Every nightly publish passes validation — index coverage, value bounds, rank integrity — before it goes live. If a run fails, the previous data stays up.</div>';
 }
 
 /* ---------- suggested watchlist weights ---------- */
@@ -1577,8 +1595,12 @@ function renderDash(force) {
   };
   if (IX.data && Date.now() - IX.at < 60 * 1000) paintIx();
   else fetch(API + "/api/indices").then(r => (r.ok ? r.json() : null)).then(d => {
-    if (d && d.indices && d.indices.length) { IX = {at: Date.now(), data: d.indices}; paintIx(); }
-  }).catch(() => {});
+    if (d && d.indices && d.indices.length) {
+      IX = {at: Date.now(), data: d.indices};
+      paintIx();
+      setLiveOK(true);
+    } else setLiveOK(false);
+  }).catch(() => setLiveOK(false));
 
   const top = DATA.rows.slice(0, 150).map(r => r[IDX.symbol]);
   const wsyms = [...WATCH];
