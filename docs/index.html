@@ -273,6 +273,16 @@
   #wstats { margin: 10px 0 2px; }
   #wstats[hidden] { display: none; }
   #wstats .strip { border-top: 1px solid var(--hairline); }
+  /* headline figure: a ledger total line — small caps left, large mono right */
+  .phead { display: flex; align-items: baseline; justify-content: space-between; margin: 12px 16px 8px; }
+  .phead .pk { color: var(--text-3); font-size: .66rem; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; }
+  .phead .pv { font: 500 1.9rem/1 var(--mono); letter-spacing: -.01em; }
+
+  /* beta mode: position-size slider for the what-if column */
+  #betabar[hidden] { display: none; }
+  #betabar input[type="range"] { flex: 1; accent-color: var(--text); background: none; margin: 0 4px; }
+  #betabar .pvw { font: 500 .78rem var(--mono); min-width: 2.6em; text-align: right; }
+  .colhead .sortable { cursor: pointer; }
 
   /* ---------- dashboard (Today) ---------- */
   .mktline { padding: 10px 16px 0; color: var(--text-3); font: 500 .66rem var(--mono); text-transform: uppercase; letter-spacing: .08em; }
@@ -408,6 +418,7 @@
           <button data-mode="voladj" class="active">Avg VAR</button>
           <button data-mode="vol">Vol</button>
           <button data-mode="today">Today</button>
+          <button data-mode="beta">Beta</button>
         </div>
       </div>
       <div class="colhead"><span class="l" id="modelabel">VAR — reward per risk</span><span class="m" id="col1">12M</span><span class="m" id="col2">6M</span><span class="sp"></span></div>
@@ -424,6 +435,13 @@
         </div>
       </div>
       <button class="abbtn sec" id="abopen" style="margin-top:8px">⚙ Auto-build this watchlist&hellip;</button>
+    </div>
+    <div id="betabar" hidden>
+      <div class="wbarrow">
+        <span class="lbl">Position size</span>
+        <input type="range" id="posw" min="1" max="12" step="1" value="5" aria-label="Position size, percent">
+        <span class="pvw" id="poswv">5%</span>
+      </div>
     </div>
     <div id="wstats" hidden></div>
     <div class="list" id="list"></div>
@@ -511,6 +529,7 @@ const MODES = {
   voladj: {label: "Ranked by Avg VAR", col: "final_score", head: "AVG VAR", fmt: v => v.toFixed(2), signed: true},
   vol:    {label: "63-day volatility, annualized", col: "volatility_63d", head: "VOL", fmt: v => (v * 100).toFixed(0) + "%", signed: false},
   today:  {label: "Today — live, top 100", heads: ["PRICE", "TODAY"]},
+  beta:   {label: "Beta vs your basket — top 150", heads: ["Δ VOL", "BETA"]},
 };
 const PAGE = 80;
 const INDEX_NAME = {sp500: "S&P 500", sp400: "S&P MidCap 400", sp600: "S&P SmallCap 600"};
@@ -531,6 +550,9 @@ function saveWatch() {
   try { localStorage.setItem("watch", JSON.stringify([...WATCH])); } catch (e) {}
   HRPW = {key: "", w: null, busy: false}; // weights are stale once the list changes
   PSTAT = {key: "", corr: undefined, busy: false}; // so is the pairwise correlation
+  BASKET = {key: "", sigma: null, ret: null, busy: false}; // and the basket itself
+  BETA = {bkey: "", vals: {}, busy: false};
+  basketRun++;
 }
 
 // appearance boot (before first paint of content): auto = follow the system
@@ -626,6 +648,16 @@ function rowsFor() {
     rs = rs.slice(0, 100);
     const chg = r => { const t = TODAYQ[r[IDX.symbol]]; return t && t.q ? t.q.c : -1e9; };
     rs = rs.slice().sort((a, b) => chg(b) - chg(a));
+  } else if (mode === "beta") {
+    // candidates only: basket members are the benchmark, not candidates
+    rs = rs.filter(r => !WATCH.has(r[IDX.symbol])).slice(0, 150);
+    if (BSORT !== "rank") {
+      const bv = r => {
+        const st = BETA.vals[r[IDX.symbol]];
+        return st && st.beta != null ? st.beta : (BSORT === "asc" ? 1e9 : -1e9);
+      };
+      rs = rs.slice().sort((a, b) => BSORT === "asc" ? bv(a) - bv(b) : bv(b) - bv(a));
+    }
   }
   return rs;
 }
@@ -663,13 +695,135 @@ function todayChips(sym) {
   return '<span class="chip flat">$' + (q.p >= 1000 ? q.p.toFixed(0) : q.p.toFixed(2)) + "</span>" +
     '<span class="chip ' + cls + '">' + (q.c > 0 ? "+" : "") + q.c.toFixed(2) + "%</span>";
 }
+/* ---------- the watchlist as a portfolio ----------
+   The basket weights its members (per the selected scheme, equal by default),
+   its daily return series is the weighted sum of the members' daily log
+   returns from the price archive, and its annualized volatility is the
+   headline number of the watch screen. Every ranked name outside the basket
+   gets a beta to it — ρ(name, basket) × σ_name ÷ σ_basket — plus a what-if:
+   the change in basket volatility from giving the name a w% position,
+   √[(1−w)²σ_b² + w²σ_c² + 2w(1−w)ρσ_bσ_c] − σ_b, recomputed in memory. */
+let BASKET = {key: "", sigma: null, ret: null, busy: false};
+let BETA = {bkey: "", vals: {}, busy: false};
+let POSW = 0.05, BSORT = "rank";
+
+const basketKey = syms => syms.slice().sort().join(",") + "|" + WSCHEME;
+
+function ensureBasket(syms) {
+  if (!syms) syms = [...WATCH].filter(s => BYSYM[s]);
+  if (!syms.length) return;
+  const key = basketKey(syms);
+  if (BASKET.key === key || BASKET.busy) return;
+  const w = watchWeights(syms);
+  if (!w) return; // HRP still computing; its completion re-renders
+  computeBasket(syms, key, w);
+}
+let basketRun = 0;
+async function computeBasket(syms, key, w) {
+  const run = ++basketRun; // a reset (watch edit, scheme change) orphans this run
+  BASKET = {key, sigma: null, ret: null, busy: true};
+  try {
+    const series = await Promise.all(syms.map(retSeries));
+    const maps = [], ws = [];
+    series.forEach((m, i) => { if (m && w[syms[i]] > 0) { maps.push(m); ws.push(w[syms[i]]); } });
+    if (!maps.length) throw new Error("no data");
+    let dates = Object.keys(maps[0]);
+    for (let k = 1; k < maps.length; k++) dates = dates.filter(dt => dt in maps[k]);
+    dates.sort();
+    if (dates.length < 40) throw new Error("insufficient overlap");
+    const tot = ws.reduce((a, b) => a + b, 0);
+    const ret = {};
+    for (const dt of dates) {
+      let s = 0;
+      for (let k = 0; k < maps.length; k++) s += (ws[k] / tot) * maps[k][dt];
+      ret[dt] = s;
+    }
+    const vals = dates.map(dt => ret[dt]);
+    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const varr = vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (vals.length - 1);
+    if (run !== basketRun) return;
+    BASKET = {key, sigma: Math.sqrt(varr * 252), ret, busy: false};
+  } catch (e) {
+    if (run !== basketRun) return;
+    BASKET = {key, sigma: null, ret: "err", busy: false};
+  }
+  if (view === "watch" || mode === "beta") render(true);
+}
+
+function statsVsBasket(m) {
+  const b = BASKET.ret;
+  if (!b || b === "err" || BASKET.sigma == null) return null;
+  const dates = Object.keys(m).filter(dt => dt in b);
+  if (dates.length < 40) return null;
+  const n = dates.length;
+  let mc = 0, mb = 0;
+  for (const dt of dates) { mc += m[dt]; mb += b[dt]; }
+  mc /= n; mb /= n;
+  let vc = 0, vb = 0, cv = 0;
+  for (const dt of dates) {
+    const xc = m[dt] - mc, xb = b[dt] - mb;
+    vc += xc * xc; vb += xb * xb; cv += xc * xb;
+  }
+  if (!(vc > 0) || !(vb > 0)) return null;
+  const rho = cv / Math.sqrt(vc * vb);
+  const sc = Math.sqrt((vc / (n - 1)) * 252);
+  return {beta: rho * sc / BASKET.sigma, rho, sc};
+}
+// Change in basket vol from a w-sized position in the candidate — pure
+// arithmetic on cached σ and ρ, so the slider never touches the network.
+function dVol(st) {
+  const sb = BASKET.sigma;
+  if (sb == null || !st) return null;
+  const w = POSW, k = 1 - w;
+  return Math.sqrt(k * k * sb * sb + w * w * st.sc * st.sc + 2 * w * k * st.rho * sb * st.sc) - sb;
+}
+
+let betaRun = 0;
+async function ensureBetas(syms) {
+  const key = BASKET.key;
+  if (!key || !BASKET.ret || BASKET.ret === "err") return;
+  if (BETA.bkey !== key) BETA = {bkey: key, vals: {}, busy: false};
+  const todo = syms.filter(s => !(s in BETA.vals));
+  if (!todo.length || BETA.busy) return;
+  BETA.busy = true;
+  const run = ++betaRun;
+  try {
+    for (let i = 0; i < todo.length; i += 15) {
+      const chunk = todo.slice(i, i + 15);
+      await Promise.all(chunk.map(async s => {
+        const m = await retSeries(s);
+        if (BETA.bkey === key) BETA.vals[s] = m ? statsVsBasket(m) : null;
+      }));
+      if (run !== betaRun || BETA.bkey !== key) return;
+      if (mode === "beta") render(true);
+    }
+  } finally {
+    if (run === betaRun) BETA.busy = false;
+  }
+}
+
+function betaChips(sym) {
+  const st = BETA.vals[sym];
+  if (st === undefined)
+    return '<span class="chip flat">&hellip;</span><span class="chip flat">&hellip;</span>';
+  if (st === null)
+    return '<span class="chip flat">&mdash;</span><span class="chip flat">&mdash;</span>';
+  const dv = dVol(st);
+  const dvTxt = dv == null ? "&mdash;" :
+    (dv < 0 ? "−" : "+") + Math.abs(dv * 100).toFixed(2) + "pp";
+  const dvCls = dv == null ? "flat" : dv < 0 ? "up" : dv > 0 ? "down" : "flat";
+  const bCls = st.beta < 1 ? "up" : st.beta > 1 ? "down" : "flat";
+  return '<span class="chip ' + dvCls + '">' + dvTxt + "</span>" +
+    '<span class="chip ' + bCls + '">' + st.beta.toFixed(2).replace("-", "−") + "</span>";
+}
+
 let MAGP = 0; // 95th-percentile value of the current list, for magnitude bars
 function render(reset) {
   const cfg = MODES[mode];
   if (reset) {
     current = rowsFor(); shown = 0; document.getElementById("list").innerHTML = "";
     MAGP = 0;
-    if (mode !== "today" && current.length) {
+    if (mode !== "today" && mode !== "beta" && current.length) {
       // log-scaled to the max: the log compresses the outlier's lead so the
       // rest of the distribution keeps visible shape
       let mx = 0;
@@ -677,7 +831,7 @@ function render(reset) {
       if (mx > 0) MAGP = Math.log1p(mx);
     }
   }
-  const showW = view === "watch" && mode !== "today" && !query;
+  const showW = view === "watch" && mode !== "today" && mode !== "beta" && !query;
   const WMAP = showW && current.length ? watchWeights(current.map(r => r[IDX.symbol])) : null;
   const frag = document.createDocumentFragment();
   const upto = Math.min(current.length, shown + PAGE);
@@ -691,6 +845,7 @@ function render(reset) {
     const secShort = SECTOR_SHORT[r[IDX.sector]] || r[IDX.sector] || "";
     let valueHtml;
     if (mode === "today") valueHtml = todayChips(sym);
+    else if (mode === "beta") valueHtml = '<span class="bchips" style="display:contents">' + betaChips(sym) + "</span>";
     else {
       const v = r[IDX[cfg.col]];
       const frac = MAGP > 0 && v != null ? Math.max(0, Math.min(1, Math.log1p(cfg.signed ? Math.max(v, 0) : v) / MAGP)) : 0;
@@ -700,8 +855,9 @@ function render(reset) {
         '<span class="chipwrap">' + chip(v, cfg) +
         '<span class="mag"><i class="' + dir + '" style="width:' + (frac * 100).toFixed(0) + '%"></i></span></span>';
     }
+    el.dataset.sym = sym;
     el.innerHTML =
-      '<span class="rnum">' + (i + 1) + "</span>" +
+      '<span class="rnum">' + (mode === "beta" ? r[IDX.rank_1500] : i + 1) + "</span>" +
       '<div class="id"><div class="t">' + esc(sym) +
       (dl ? '<span class="rdel ' + (dl > 0 ? "up" : "down") + '">' + (dl > 0 ? "▲" : "▼") + Math.abs(dl) + "</span>" : "") +
       '</div><div class="n">' + esc(r[IDX.name]) +
@@ -725,7 +881,12 @@ function render(reset) {
   shown = upto;
   const list = document.getElementById("list");
   list.appendChild(frag);
-  if (!current.length && view === "watch") {
+  if (!current.length && mode === "beta") {
+    list.innerHTML = '<div class="chart-note" style="padding:28px 16px;text-align:center">' +
+      (!WATCH.size ? "Star a few names first — beta is measured against your watchlist basket." :
+        view === "watch" ? "Your watchlist members are the basket itself. Switch to the 1500 tab to size candidates against it." :
+        "No candidates match here.") + "</div>";
+  } else if (!current.length && view === "watch") {
     list.innerHTML = '<div class="chart-note" style="padding:28px 16px;text-align:center">Nothing here yet. Open a stock and tap the ☆ to add it to your watchlist.</div>';
   }
   document.getElementById("more").hidden = shown >= current.length;
@@ -736,10 +897,18 @@ function render(reset) {
   } else wst.hidden = true;
   document.getElementById("modelabel").textContent = cfg.label;
   if (mode === "today" && current.length) ensureToday(current.map(r => r[IDX.symbol]));
+  if (mode === "beta" && WATCH.size) {
+    ensureBasket();
+    if (BASKET.ret && BASKET.ret !== "err" && current.length) ensureBetas(current.map(r => r[IDX.symbol]));
+  }
   let heads = cfg.heads || ["", ""]; // single-value modes: the label is the header
   if (showW) heads = ["WEIGHT", cfg.head];
+  if (mode === "beta") heads = ["Δ VOL", "BETA" + (BSORT === "asc" ? " ▲" : BSORT === "desc" ? " ▼" : "")];
   document.getElementById("col1").textContent = heads[0];
-  document.getElementById("col2").textContent = heads[1];
+  const col2 = document.getElementById("col2");
+  col2.textContent = heads[1];
+  col2.classList.toggle("sortable", mode === "beta");
+  document.getElementById("betabar").hidden = mode !== "beta";
   const wbar = document.getElementById("wbar");
   wbar.hidden = !(view === "watch" && !query);
   if (!wbar.hidden)
@@ -1146,7 +1315,7 @@ function renderAbout() {
 }
 
 /* ---------- suggested watchlist weights ---------- */
-let WSCHEME = (() => { try { return localStorage.getItem("wscheme") || "invvol"; } catch (e) { return "invvol"; } })();
+let WSCHEME = (() => { try { return localStorage.getItem("wscheme") || "equal"; } catch (e) { return "equal"; } })();
 let HRPW = {key: "", w: null, busy: false};
 
 // Returns {sym: weight} (weights sum to 1), or null while HRP is computing.
@@ -1242,12 +1411,14 @@ async function computeHRP(syms, key) {
   } catch (e) {
     HRPW = {key, w: "err", busy: false};
   }
-  if (view === "watch") render(true);
+  if (view === "watch" || mode === "beta") render(true);
 }
 
-// Watchlist portfolio stats — computed, not guessed: concentration (effective
-// number of names = 1/Σw²), weighted 63-day volatility, and the average
-// pairwise correlation over ~6 months of daily returns.
+// Watchlist portfolio stats — computed, not guessed. The headline is the
+// basket's own annualized volatility (from its weighted daily return series,
+// so diversification actually shows); below it, concentration (effective
+// number of names = 1/Σw²), the weighted average of member vols for
+// comparison, and the average pairwise correlation.
 let PSTAT = {key: "", corr: undefined, busy: false};
 function renderPortfolioStats(box, rows) {
   const syms = rows.map(r => r[IDX.symbol]);
@@ -1264,13 +1435,17 @@ function renderPortfolioStats(box, rows) {
     effN = s2 > 0 ? 1 / s2 : null;
     wvol = vw > 0 ? vv / vw : null;
   }
+  ensureBasket(syms);
+  const bsig = BASKET.key === basketKey(syms) && BASKET.sigma != null ? BASKET.sigma : null;
   const key = syms.slice().sort().join(",");
   if (syms.length >= 2 && syms.length <= 30 && PSTAT.key !== key && !PSTAT.busy) computePairCorr(syms, key);
   const corr = syms.length < 2 || syms.length > 30 ? null : PSTAT.key === key ? PSTAT.corr : undefined;
   box.innerHTML =
+    '<div class="phead"><span class="pk">Basket volatility &middot; annualized</span>' +
+      '<span class="pv">' + (bsig != null ? (bsig * 100).toFixed(1) + "%" : "&hellip;") + "</span></div>" +
     '<div class="strip">' +
       cell("Names", String(syms.length), effN != null && syms.length > 1 ? "effective " + effN.toFixed(1) : "&nbsp;") +
-      cell("Wtd volatility", wvol != null ? (wvol * 100).toFixed(1) + "%" : "&hellip;", "63-day, annualized") +
+      cell("Avg member vol", wvol != null ? (wvol * 100).toFixed(1) + "%" : "&hellip;", "weighted, 63-day") +
       cell("Avg pair corr", corr === undefined ? "&hellip;" : corr === null ? "&mdash;" : corr.toFixed(2), "~6 mo daily returns") +
     "</div>";
 }
@@ -1295,6 +1470,10 @@ document.getElementById("wseg").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   WSCHEME = b.dataset.w;
   try { localStorage.setItem("wscheme", WSCHEME); } catch (e2) {}
+  // basket weights changed, so its series, vol and every beta are stale
+  BASKET = {key: "", sigma: null, ret: null, busy: false};
+  BETA = {bkey: "", vals: {}, busy: false};
+  basketRun++;
   render(true);
 });
 
@@ -1642,6 +1821,28 @@ document.getElementById("seg").addEventListener("click", e => {
   mode = b.dataset.mode;
   for (const x of document.querySelectorAll("#seg button")) x.classList.toggle("active", x === b);
   refresh();
+});
+// Position-size slider: Δ VOL is pure arithmetic on cached σ and ρ, so a drag
+// repaints the visible chips in place — no network, no list rebuild.
+const posw = document.getElementById("posw");
+let poswRaf = 0;
+posw.addEventListener("input", () => {
+  POSW = +posw.value / 100;
+  document.getElementById("poswv").textContent = posw.value + "%";
+  if (mode !== "beta" || poswRaf) return;
+  poswRaf = requestAnimationFrame(() => {
+    poswRaf = 0;
+    for (const el of document.querySelectorAll("#list .row")) {
+      const wrap = el.querySelector(".bchips");
+      if (wrap && el.dataset.sym) wrap.innerHTML = betaChips(el.dataset.sym);
+    }
+  });
+});
+// Tap the BETA column head to cycle its sort: rank order → beta ↑ → beta ↓.
+document.getElementById("col2").addEventListener("click", () => {
+  if (mode !== "beta") return;
+  BSORT = BSORT === "rank" ? "asc" : BSORT === "asc" ? "desc" : "rank";
+  render(true);
 });
 document.getElementById("search").addEventListener("input", e => { query = e.target.value.trim(); refresh(); });
 document.getElementById("more").addEventListener("click", () => render(false));
