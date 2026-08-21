@@ -79,11 +79,18 @@
     --up: #6fb08d; --down: #cf7f6d; --baseline: #524b3f;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  :focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  /* small controls keep their compact look but hit at ~44px: an invisible
+     halo extends each tap target */
+  .seg button, .ranges button, .tabs button, .rstar, .colhead .sortable { position: relative; }
+  .seg button::after, .ranges button::after, .tabs button::after, .rstar::after, .colhead .sortable::after {
+    content: ""; position: absolute; inset: -8px;
+  }
   html { background: var(--bg); height: 100%; }
   body {
     margin: 0; background: var(--bg); color: var(--text); height: 100%;
     overflow: hidden; overscroll-behavior: none;
-    font: 15px/1.45 -apple-system, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
+    font: .9375rem/1.45 -apple-system, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
   }
   /* App frame: content area scrolls internally; the tab bar is part of the
      frame itself (never position:fixed — iOS Safari detaches those while
@@ -476,7 +483,7 @@
       <div class="toolrow">
         <label class="search">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-          <input id="search" type="search" placeholder="Symbol or company" autocomplete="off">
+          <input id="search" type="search" placeholder="Symbol or company" autocomplete="off" aria-label="Search by symbol, company, or sector">
         </label>
         <div class="seg" id="seg">
           <button data-mode="voladj" class="active">Avg VAR</button>
@@ -967,6 +974,15 @@ function render(reset) {
   const col2 = document.getElementById("col2");
   col2.textContent = heads[1];
   col2.classList.toggle("sortable", mode === "beta");
+  if (mode === "beta") {
+    col2.setAttribute("role", "button");
+    col2.setAttribute("tabindex", "0");
+    col2.setAttribute("aria-label", "Sort by beta");
+  } else {
+    col2.removeAttribute("role");
+    col2.removeAttribute("tabindex");
+    col2.removeAttribute("aria-label");
+  }
   document.getElementById("betabar").hidden = mode !== "beta";
   const wbar = document.getElementById("wbar");
   wbar.hidden = !(view === "watch" && !query);
@@ -1842,11 +1858,16 @@ posw.addEventListener("input", () => {
     }
   });
 });
-// Tap the BETA column head to cycle its sort: rank order → beta ↑ → beta ↓.
-document.getElementById("col2").addEventListener("click", () => {
+// Tap the BETA column head (or press Enter/Space on it) to cycle its sort:
+// rank order → beta ↑ → beta ↓.
+function cycleBetaSort() {
   if (mode !== "beta") return;
   BSORT = BSORT === "rank" ? "asc" : BSORT === "asc" ? "desc" : "rank";
   render(true);
+}
+document.getElementById("col2").addEventListener("click", cycleBetaSort);
+document.getElementById("col2").addEventListener("keydown", e => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); cycleBetaSort(); }
 });
 document.getElementById("search").addEventListener("input", e => { query = e.target.value.trim(); refresh(); });
 document.getElementById("more").addEventListener("click", () => render(false));

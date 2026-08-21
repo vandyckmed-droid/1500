@@ -26,10 +26,10 @@ jobs:
       - name: Syntax-check the Worker
         run: node --check worker/index.js
 
-      - name: Unit-test the stats module
+      - name: Unit tests (stats + palette contrast)
         run: |
           node --check docs/stats.js
-          node --test test/stats.test.js
+          node --test test/stats.test.js test/contrast.test.js
 
       - name: Syntax-check the app script
         run: |
