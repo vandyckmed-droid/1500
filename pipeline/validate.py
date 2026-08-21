@@ -35,10 +35,8 @@ def validate(table: pd.DataFrame, constituents: pd.DataFrame) -> list[str]:
         if table[col].isna().any():
             errors.append(f"NaN values in {col}")
 
-    if not table["volatility_12m"].between(0.01, 5).all():
-        errors.append("volatility_12m outside plausible range (0.01, 5)")
-    if not table["volatility_6m"].between(0.01, 5).all():
-        errors.append("volatility_6m outside plausible range (0.01, 5)")
+    if not table["volatility_63d"].between(0.01, 5).all():
+        errors.append("volatility_63d outside plausible range (0.01, 5)")
     # Extreme single-name returns do happen (e.g. SNDK ~34x in 2025-26), so the
     # hard bound is generous; anything past it is almost certainly bad data.
     if table["return_12_1"].abs().max() > 60:
