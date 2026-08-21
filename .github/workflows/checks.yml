@@ -1,0 +1,55 @@
+# The refit safety net: every pull request must pass syntax checks on the
+# worker and the app script, a schema check on the published data, a dry-run
+# bundle of the Worker config, and a headless-browser smoke test of the app
+# itself (boot, rankings, stock sheet, watchlist stats) before it can merge.
+name: Checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Syntax-check the Worker
+        run: node --check worker/index.js
+
+      - name: Syntax-check the app script
+        run: |
+          python3 - <<'EOF'
+          import re
+          html = open("docs/index.html").read()
+          scripts = re.findall(r"<script>(.*?)</script>", html, re.S)
+          assert scripts, "no inline <script> found in docs/index.html"
+          open("/tmp/app.js", "w").write(scripts[0])
+          EOF
+          node --check /tmp/app.js
+
+      - name: Validate published data
+        run: python3 test/check_data.py docs/data/rankings.json
+
+      - name: Dry-run the Worker bundle
+        run: npx --yes wrangler@4 deploy --dry-run
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1
+          npx playwright install --with-deps chromium
+
+      - name: Smoke test the app
+        run: |
+          python3 -m http.server 8080 --directory docs &
+          for i in $(seq 1 20); do curl -sf http://localhost:8080/ >/dev/null && break; sleep 0.5; done
+          node test/smoke.spec.js
