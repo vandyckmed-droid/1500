@@ -131,7 +131,16 @@ function check(name, ok, detail) {
   check("basket volatility headline", !!gotBasket,
     await page.evaluate(() => (document.querySelector("#wstats .phead .pv") || {}).textContent || "missing"));
 
-  // 4. No uncaught errors anywhere along the way
+  // 4. Beta mode fills from the returns matrix — one fetch, one in-memory pass
+  await page.click('#tabs button[data-view="all"]');
+  await page.click('#seg button[data-mode="beta"]');
+  const betaFilled = await page.waitForFunction(() => {
+    const chips = [...document.querySelectorAll("#list .row .bchips .chip")];
+    return chips.filter(c => /^[0-9−+.-]/.test(c.textContent.trim())).length >= 20;
+  }, { timeout: 15000 }).catch(() => null);
+  check("beta column fills from matrix", !!betaFilled);
+
+  // 5. No uncaught errors anywhere along the way
   check("no page errors", pageErrors.length === 0, pageErrors.join(" | "));
 
   await browser.close();
