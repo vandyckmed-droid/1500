@@ -12,9 +12,6 @@
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash"
   },
-  "ai": {
-    "binding": "AI"
-  },
   "d1_databases": [
     {
       "binding": "DB",

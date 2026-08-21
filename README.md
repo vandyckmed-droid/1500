@@ -6,7 +6,8 @@ GitHub Pages and refreshed automatically with GitHub Actions.
 
 **Live app:** https://1500.vandyck-med.workers.dev/ — an installable PWA
 (open in Safari/Chrome → Share → Add to Home Screen) with live quotes,
-intraday charts, AI analysis, rank history, and a weighted watchlist builder,
+intraday charts, momentum-quality stats, rank history, and a weighted
+watchlist builder,
 served by a Cloudflare Worker. https://vandyckmed-droid.github.io/1500/ is a
 static mirror of the same site.
 
