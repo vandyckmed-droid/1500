@@ -139,7 +139,7 @@
   .colhead {
     display: flex; align-items: center; padding: 6px 24px 0;
     color: var(--text-3); font-size: .64rem; font-weight: 600;
-    text-transform: uppercase; letter-spacing: .08em;
+    text-transform: uppercase; letter-spacing: .09em;
   }
   .colhead .l { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .colhead .m { width: var(--chip-w); text-align: right; margin-left: 18px; font-family: var(--mono); font-weight: 500; }
@@ -235,7 +235,7 @@
   .sheader .sic { width: 52px; height: 52px; }
   .sheader .t { font: 600 1.35rem/1.15 var(--serif); }
   .sheader .n { color: var(--text-2); font-size: .84rem; }
-  .badges { padding: 8px 16px 0; color: var(--text-3); font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+  .badges { padding: 8px 16px 0; color: var(--text-3); font-size: .64rem; font-weight: 600; text-transform: uppercase; letter-spacing: .09em; }
   /* ---------- price chart ---------- */
   .chartbox { margin: 4px 16px 0; }
   .chart-readout { display: flex; align-items: baseline; gap: 8px; min-height: 22px; padding: 2px 0 4px; }
@@ -260,8 +260,8 @@
 
   .sec-label {
     margin: 0 16px; padding: 18px 0 5px; border-bottom: 1px solid var(--hairline);
-    color: var(--text-3); font-size: .66rem; font-weight: 600;
-    text-transform: uppercase; letter-spacing: .1em;
+    color: var(--text-3); font-size: .64rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .09em;
   }
   /* figure strips: ruled columns, no card box */
   .strip {
@@ -274,7 +274,7 @@
   .strip .cell[data-key] { cursor: pointer; }
   .strip .cell.sel { border-bottom-color: var(--text); }
   .strip .cell + .cell { border-left: 1px solid var(--hairline); }
-  .strip .rk { color: var(--text-3); font-size: .62rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; }
+  .strip .rk { color: var(--text-3); font-size: .64rem; font-weight: 600; text-transform: uppercase; letter-spacing: .09em; }
   .strip .rv { font: 500 1.14rem var(--mono); margin-top: 4px; }
   .strip .rv.up { color: var(--up); } .strip .rv.down { color: var(--down); }
   .strip .rd { color: var(--text-3); font: 400 .62rem var(--mono); margin-top: 2px; }
@@ -298,7 +298,7 @@
   #wstats .strip { border-top: 1px solid var(--hairline); }
   /* headline figure: a ledger total line — small caps left, large mono right */
   .phead { display: flex; align-items: baseline; justify-content: space-between; margin: 12px 16px 8px; }
-  .phead .pk { color: var(--text-3); font-size: .66rem; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; }
+  .phead .pk { color: var(--text-3); font-size: .64rem; font-weight: 600; text-transform: uppercase; letter-spacing: .09em; }
   .phead .pv { font: 500 1.9rem/1 var(--mono); letter-spacing: -.01em; }
 
   /* beta mode: position-size slider for the what-if column */
@@ -308,7 +308,7 @@
   .colhead .sortable { cursor: pointer; }
 
   /* ---------- dashboard (Today) ---------- */
-  .mktline { padding: 10px 16px 0; color: var(--text-3); font: 500 .66rem var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+  .mktline { padding: 10px 16px 0; color: var(--text-3); font: 500 .64rem var(--mono); text-transform: uppercase; letter-spacing: .09em; }
   /* honest failure state: a quiet advisory line, never silent dashes */
   .livestatus { margin: 8px 16px 0; padding: 5px 0; border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); color: var(--text-2); font-size: .74rem; font-style: italic; }
   .livestatus[hidden] { display: none; }
@@ -354,7 +354,7 @@
   .abprev { display: flex; align-items: center; gap: 10px; margin: 6px 16px; padding: 10px 0; background: none; border-bottom: 1px solid var(--hairline); }
   .abprev .m { margin-left: auto; color: var(--text-2); font: 400 .74rem var(--mono); }
   .wbarrow { display: flex; align-items: center; gap: 8px; padding: 6px 16px 0; }
-  .wbarrow .lbl { color: var(--text-3); font-size: .66rem; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; margin-right: auto; }
+  .wbarrow .lbl { color: var(--text-3); font-size: .64rem; font-weight: 600; text-transform: uppercase; letter-spacing: .09em; margin-right: auto; }
   .wchip { color: var(--text); font-weight: 500; }
 
   /* pull-to-refresh + live pulse */
@@ -618,7 +618,7 @@ function loadData(first) {
     DATA = d; IDX = {}; BYSYM = {};
     d.columns.forEach((c, i) => IDX[c] = i);
     d.rows.forEach(r => BYSYM[r[IDX.symbol]] = r);
-    document.getElementById("asof").textContent = d.as_of;
+    document.getElementById("asof").textContent = day(d.as_of);
     document.getElementById("status").hidden = true;
     renderAbout();
     renderSectors();
@@ -1599,7 +1599,7 @@ function moverRow(sym, q) {
 let dashTimer = 0;
 function renderDash(force) {
   if (!DATA) return;
-  document.getElementById("dasof").textContent = DATA.as_of;
+  document.getElementById("dasof").textContent = day(DATA.as_of);
   const mkt = document.getElementById("mktline");
   mkt.textContent = marketLine();
   clearInterval(dashTimer);

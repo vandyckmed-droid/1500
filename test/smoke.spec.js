@@ -110,7 +110,7 @@ function check(name, ok, detail) {
   });
   check("self-hosted fonts load", fontsLoaded);
   const asof = await page.locator("#asof").textContent();
-  check("as-of date shown", /^\d{4}-\d{2}-\d{2}$/.test((asof || "").trim()), asof);
+  check("as-of date shown", /^[A-Z][a-z]{2} \d{1,2}, \d{4}$/.test((asof || "").trim()), asof);
 
   // 2. Stock sheet: chart + computed momentum quality
   await page.locator("#list .row").first().click();
