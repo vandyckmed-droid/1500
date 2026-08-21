@@ -26,6 +26,14 @@ log = logging.getLogger("pipeline")
 # ~13.5 months of calendar history comfortably covers 253 trading days.
 HISTORY_DAYS = 420
 
+# The shared daily-returns matrix for client-side portfolio math (basket
+# volatility, beta, correlations, HRP): one global trading-day axis, this
+# many return days deep — enough for the client's ~6-month windows.
+RETURNS_DAYS = 130
+RETURNS_SCALE = 10_000  # log returns stored as ints: round(ln(p1/p0) * 1e4)
+RETURNS_MIN_OBS = 60  # symbols with fewer non-null returns are left out
+RETURNS_MIN_COVERAGE = 0.95  # of ranked symbols, else the file is not written
+
 TABLE_COLUMNS = [
     "symbol",
     "name",
@@ -52,6 +60,50 @@ TABLE_COLUMNS = [
     "rank_1500",
     "percentile_1500",
 ]
+
+
+def build_returns_matrix(series: dict[str, pd.Series], ranked_syms: list[str]) -> dict | None:
+    """One daily log-return matrix shared by all client-side portfolio math.
+
+    A single global trading-day axis (union of ranked symbols' dates, last
+    RETURNS_DAYS return days); per symbol, an int array of log returns
+    scaled by RETURNS_SCALE, null where the symbol lacks either day's close.
+    Returns None (caller logs and skips the file) if coverage is too thin —
+    the file is additive, so a bad day for it must never block the rankings.
+    """
+    all_dates: set = set()
+    for sym in ranked_syms:
+        s = series.get(sym)
+        if s is not None and not s.empty:
+            all_dates.update(s.index)
+    axis = sorted(all_dates)[-(RETURNS_DAYS + 1):]
+    if len(axis) < RETURNS_MIN_OBS + 1:
+        return None
+    out: dict[str, list] = {}
+    for sym in ranked_syms:
+        s = series.get(sym)
+        if s is None or s.empty:
+            continue
+        closes = {d: float(v) for d, v in s.items()}
+        row: list = []
+        n_obs = 0
+        for i in range(1, len(axis)):
+            p0, p1 = closes.get(axis[i - 1]), closes.get(axis[i])
+            if p0 and p1 and p0 > 0 and p1 > 0:
+                row.append(round(math.log(p1 / p0) * RETURNS_SCALE))
+                n_obs += 1
+            else:
+                row.append(None)
+        if n_obs >= RETURNS_MIN_OBS:
+            out[sym] = row
+    if len(out) < RETURNS_MIN_COVERAGE * len(ranked_syms):
+        return None
+    return {
+        "dates": [d.strftime("%Y-%m-%d") for d in axis[1:]],
+        "scale": RETURNS_SCALE,
+        "kind": "log",
+        "returns": out,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -160,6 +212,26 @@ def main(argv: list[str] | None = None) -> int:
     out.write_text(blob)
     # (Rank history is recorded by the Cloudflare Worker into D1 each morning;
     # no file snapshots are kept in the repo.)
+
+    # The shared returns matrix (dark-launched: published alongside the
+    # rankings, consumed by the app once the client math switches to it).
+    matrix = build_returns_matrix(series, table["symbol"].tolist())
+    ret_out = out.parent / "returns.json"
+    if matrix is None:
+        log.error("returns matrix coverage too thin — not writing %s", ret_out)
+    else:
+        matrix = {
+            "generated_at": payload["generated_at"],
+            "as_of": as_of,
+            **matrix,
+        }
+        ret_out.write_text(json.dumps(matrix, separators=(",", ":"), allow_nan=False))
+        log.info(
+            "wrote %s: %d symbols x %d days",
+            ret_out,
+            len(matrix["returns"]),
+            len(matrix["dates"]),
+        )
 
     # Per-ticker price series for the site's charts. These are large and
     # regenerated whole every day, so they live on the orphan 'data' branch
