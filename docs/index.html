@@ -749,7 +749,6 @@ function dVol(st) {
   return Stats.blendVol(BASKET.sigma, st.sc, st.rho, POSW);
 }
 
-let betaRun = 0;
 async function ensureBetas(syms) {
   const key = BASKET.key;
   if (!key || !BASKET.ret || BASKET.ret === "err") return;
@@ -757,20 +756,18 @@ async function ensureBetas(syms) {
   const todo = syms.filter(s => !(s in BETA.vals));
   if (!todo.length || BETA.busy) return;
   BETA.busy = true;
-  const run = ++betaRun;
   try {
-    for (let i = 0; i < todo.length; i += 15) {
-      const chunk = todo.slice(i, i + 15);
-      await Promise.all(chunk.map(async s => {
-        const m = await retSeries(s);
-        if (BETA.bkey === key) BETA.vals[s] = m ? statsVsBasket(m) : null;
-      }));
-      if (run !== betaRun || BETA.bkey !== key) return;
-      if (mode === "beta") render(true);
-    }
+    // One matrix fetch (usually already resident), then every beta is pure
+    // in-memory arithmetic — the whole column fills in a single pass.
+    await loadMatrix();
+    if (BETA.bkey !== key) return;
+    for (const s of todo) BETA.vals[s] = statsVsBasket(retOf(s));
+  } catch (e) {
+    for (const s of todo) if (!(s in BETA.vals)) BETA.vals[s] = null;
   } finally {
-    if (run === betaRun) BETA.busy = false;
+    BETA.busy = false;
   }
+  if (mode === "beta") render(true);
 }
 
 function betaChips(sym) {
@@ -1398,19 +1395,32 @@ const ABOPTS = [
   ["mode", "Fill mode", [["replace", "Replace list"], ["add", "Add to list"]]],
 ];
 
-// Daily log-return map per symbol, session-cached — failures cache as null so
-// a symbol with no price file is fetched at most once. Shared by the
-// correlation gate and HRP.
-const RETS = {};
-async function retSeries(sym) {
+// The returns matrix: one nightly file carrying every ranked symbol's daily
+// log returns on a shared trading-day axis — the single source for all
+// portfolio math (basket, beta, correlations, HRP, the auto-build gate).
+// Fetched once per session; every per-symbol series is derived in memory.
+let MATRIX = null, MATRIXP = null;
+function loadMatrix() {
+  if (MATRIX) return Promise.resolve(MATRIX);
+  if (!MATRIXP) MATRIXP = fetch("data/returns.json")
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(d => (MATRIX = d))
+    .catch(e => { MATRIXP = null; throw e; });
+  return MATRIXP;
+}
+const RETS = {}; // sym → date→log-return map derived from the matrix (null = not covered)
+function retOf(sym) {
   if (sym in RETS) return RETS[sym];
-  try {
-    const d = await fetchPrices(sym);
-    RETS[sym] = Stats.logReturnMap(d.dates, d.close, 140);
-  } catch (e) {
-    RETS[sym] = null;
-  }
-  return RETS[sym];
+  const arr = MATRIX && MATRIX.returns[sym];
+  if (!arr) return (RETS[sym] = null);
+  const m = {};
+  for (let i = 0; i < arr.length; i++)
+    if (arr[i] != null) m[MATRIX.dates[i]] = arr[i] / MATRIX.scale;
+  return (RETS[sym] = Object.keys(m).length > Stats.MIN_OVERLAP ? m : null);
+}
+async function retSeries(sym) {
+  try { await loadMatrix(); } catch (e) { return null; }
+  return retOf(sym);
 }
 const corrOf = Stats.corr;
 
@@ -1445,16 +1455,16 @@ async function runAB() {
   const pv = document.getElementById("abpreview");
   const alive = () => myId === abRunId && pv.isConnected;
   btn.disabled = true;
-  const CAP = 200;
   const picks = [];
   const perSector = {};
   const skipped = [];
   // Greedy correlation gate: a candidate must not correlate above the cap
   // with anything already admitted (including the current list in add mode).
+  // All correlations come from the resident returns matrix, so the walk
+  // covers the entire ranking in one synchronous pass.
   const admitted = C.mode === "add" ? [...WATCH] : [];
-  let checked = 0, truncated = false;
   try {
-    if (C.corr && admitted.length) await Promise.all(admitted.map(retSeries)); // warm in parallel
+    if (C.corr) { try { await loadMatrix(); } catch (e) {} }
     for (const r of DATA.rows) {
       if (!alive()) return;
       if (picks.length >= C.n) break;
@@ -1465,14 +1475,11 @@ async function runAB() {
       if (C.vol && (r[IDX.volatility_63d] || 99) > C.vol) continue;
       const sec = r[IDX.sector] || "?";
       if (C.cap && (perSector[sec] || 0) >= C.cap) continue;
-      if (C.corr && admitted.length) {
-        if (++checked > CAP) { truncated = true; break; }
-        pv.innerHTML = '<div class="chart-note" style="padding:8px 16px">Checking correlations&hellip; ' +
-          picks.length + " picked, " + checked + " examined</div>";
-        const cand = await retSeries(sym); // null (no data) passes the gate
+      if (C.corr && admitted.length && MATRIX) {
+        const cand = retOf(sym); // null (no data) passes the gate
         let worst = null;
         for (const a of admitted) {
-          const c = corrOf(cand, await retSeries(a));
+          const c = corrOf(cand, retOf(a));
           if (c != null && c > C.corr && (!worst || c > worst.c)) worst = {s: a, c};
         }
         if (worst) { skipped.push(sym + " (" + worst.c.toFixed(2) + " vs " + worst.s + ")"); continue; }
@@ -1484,17 +1491,12 @@ async function runAB() {
   } finally { if (btn.isConnected) btn.disabled = false; }
   if (!alive()) return;
   if (!picks.length) {
-    pv.innerHTML = '<div class="chart-note" style="padding:8px 16px">' +
-      (truncated
-        ? "Nothing found within the first " + CAP + " candidates — raise the correlation cap or tighten other filters."
-        : "No stocks pass those filters — loosen something and run again.") + "</div>";
+    pv.innerHTML = '<div class="chart-note" style="padding:8px 16px">No stocks pass those filters — loosen something and run again.</div>';
     return;
   }
   pv.innerHTML =
     '<div class="sec-label">Result · ' + picks.length + " stocks" +
-    (picks.length < C.n
-      ? (truncated ? " (search stopped at " + CAP + " candidates)" : " (fewer than requested passed the filters)")
-      : "") + "</div>" +
+    (picks.length < C.n ? " (fewer than requested passed the filters)" : "") + "</div>" +
     (skipped.length
       ? '<div class="chart-note" style="padding:0 16px 6px">Skipped as too correlated: ' +
         esc(skipped.slice(0, 8).join(", ")) + (skipped.length > 8 ? " +" + (skipped.length - 8) + " more" : "") + "</div>"

@@ -1,7 +1,8 @@
 /* v2: instant opens.
-   - rankings.json: stale-while-revalidate — cached copy paints immediately,
-     the network copy replaces it in the background for the next read. Explicit
-     refreshes (request.cache === "no-store", used by pull-to-refresh and the
+   - rankings.json + returns.json (the daily data files): stale-while-
+     revalidate — cached copy paints immediately, the network copy replaces
+     it in the background for the next read. Explicit refreshes
+     (request.cache === "no-store", used by pull-to-refresh and the
      foreground refetch) skip the cache and hit the network directly.
    - navigations/shell: network-first with a 3.5s timeout falling back to
      cache, so merges show up promptly but a bad connection still opens.
@@ -28,7 +29,7 @@ self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== location.origin) return;
 
-  if (url.pathname.endsWith("/data/rankings.json")) {
+  if (url.pathname.endsWith("/data/rankings.json") || url.pathname.endsWith("/data/returns.json")) {
     if (e.request.cache === "no-store") {
       e.respondWith(fresh(e.request).catch(() => caches.match(e.request)));
     } else {
